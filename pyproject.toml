@@ -13,7 +13,7 @@ dependencies = [
 ]
 
 [project.scripts]
-zed-onprem-bundle = "zed_offline_bundle.cli:main"
+zed-onprem-bundle = "zed_onprem_bundle.cli:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/zed_offline_bundle"]
+packages = ["src/zed_onprem_bundle"]

@@ -111,7 +111,7 @@ uv run zed-onprem-bundle build
 ```
 zed-onprem-bundle/
 ├── pyproject.toml / uv.lock / .python-version   # uv 工程（python 3.12）
-├── src/zed_offline_bundle/                      # 构建器（cli/config/download/.../finalize）
+├── src/zed_onprem_bundle/                      # 构建器（cli/config/download/.../finalize）
 ├── config/
 │   ├── available/                               # ★候选 preset 清单库（默认不生效）
 │   └── enabled/                                 # ★生效配置（ln -s preset + 自写增量；git 忽略）

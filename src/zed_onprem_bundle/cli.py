@@ -16,9 +16,9 @@ from pathlib import Path
 from . import __version__
 from .config import load_merged_config
 
-log = logging.getLogger("zed_offline_bundle")
+log = logging.getLogger("zed_onprem_bundle")
 
-#: 工程根（pyproject 所在目录）：src/zed_offline_bundle/cli.py → parents[2]
+#: 工程根（pyproject 所在目录）：src/zed_onprem_bundle/cli.py → parents[2]
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 DEFAULT_EXTENSIONS_REPO = "/home/dev/rust-dev/extensions"
@@ -73,7 +73,7 @@ def _run_stage(label: str, module: str, func: str, *args) -> tuple[bool, object]
     """
     log.info("== %s ==", label)
     try:
-        mod = importlib.import_module(f"zed_offline_bundle.{module}")
+        mod = importlib.import_module(f"zed_onprem_bundle.{module}")
         return True, getattr(mod, func)(*args)
     except Exception as exc:  # noqa: BLE001 —— 阶段失败统一拦截
         log.error("阶段失败: %s —— %s: %s", label, type(exc).__name__, exc)

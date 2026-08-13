@@ -62,9 +62,9 @@ zed-onprem-bundle/                 # 独立工程（本仓库）
 ├── .github/
 │   └── workflows/build-bundle.yml  # ★ CI 构建定义（见 §5.7）
 ├── src/
-│   └── zed_offline_bundle/         # 标准 src 布局包
+│   └── zed_onprem_bundle/         # 标准 src 布局包
 │       ├── __init__.py
-│       ├── __main__.py             # python -m zed_offline_bundle 等价入口
+│       ├── __main__.py             # python -m zed_onprem_bundle 等价入口
 │       ├── cli.py                  # argparse：build 子命令 + --config-dir 等
 │       ├── config.py               # 配置合并：只扫 enabled/（展开软链接 preset）→ deep merge → 校验
 │       ├── download.py             # requests 下载助手（重试/超时/代理/GitHub 限流）

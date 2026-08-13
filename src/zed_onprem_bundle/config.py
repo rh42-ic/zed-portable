@@ -21,7 +21,7 @@ try:
 except ImportError:  # Python < 3.11
     import tomli as tomllib
 
-log = logging.getLogger("zed_offline_bundle.config")
+log = logging.getLogger("zed_onprem_bundle.config")
 
 #: 兜底默认（enabled 为空或目录不存在时——不装任何扩展/LSP/node）
 DEFAULT_CONFIG: dict = {
