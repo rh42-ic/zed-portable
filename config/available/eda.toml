@@ -1,0 +1,8 @@
+# config/available/eda.toml —— 领域：EDA 工程师 preset（均为纯语法扩展，完全离线安全）
+# 注：systemverilog 扩展在 extensions 仓库无此目录（仅 bluespec-systemverilog），已剔除
+[extensions]
+ids = [
+  "verilog", "vhdl", "tcl",
+  "p4", "systemrdl", "bluespec-systemverilog",
+  "xmake",
+]

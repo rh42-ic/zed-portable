@@ -1,0 +1,5 @@
+# config/available/lang-script.toml —— 语言：脚本（lua/perl/php/ruby/powershell，id 均核验存在）
+[extensions]
+ids = [
+  "lua", "perl", "php", "ruby", "powershell",
+]

@@ -12,7 +12,7 @@
 - 产物为**一个 bundle**：`bin/`（zed 二进制）+ `data/`（用户数据目录，通过 `--user-data-dir` 指向）
 - 本机构建 Zed 本体（cargo build）：**确认默认不做**——本机 AGENTS.md 禁 rust 编译；bundle 直接复用官方 release 二进制；端到端验证如需要仅可在 CI 进行
 - **实现语言：Python 3**（用户选定）。**工程结构随大流**：标准 Python 布局（pyproject.toml + src/ 包 + console script），不搞自定义薄壳/自定义目录
-- **入口**：`pip install -e .` 后 `zed-onprem-bundle build`（本地与 CI 同一命令）
+- **包管理与入口（用户确认）**：**全程使用 uv，禁止 pip**——python 版本（`uv python install`）、依赖安装（`uv sync`，pyproject.toml 驱动 + 提交 uv.lock）、运行（`uv run`）；入口：`uv sync` 后 `zed-onprem-bundle build`（本地与 CI 同一命令）
 - **配置双目录**（用户选定）：`config/available/`（git 管理，工程随升级的常用经典配置）+ `config/enabled/`（git 忽略，用户真正启用的配置存放处，可放多个文件或软链接）；构建时扫描合并，enabled 覆盖 available
 - **输出目录随大流**（用户选定）：`.gitignore` 直接采用官方 Python.gitignore（github/gitignore）；构建中间产物 → `build/`、bundle 产物 → `dist/`，均已覆盖无需专门设置
 - **构建环境：GitHub Actions**（最终构建在 CI 完成，本机仅开发调试）。环境准备（setup-python、pip install、rustup target）由 workflow 显式声明，不依赖隐式本机状态
@@ -52,10 +52,13 @@
 
 ```
 zed-onprem-bundle/                 # 独立工程（本仓库）
-├── pyproject.toml                  # hatchling；dependencies=[requests]；[project.scripts] zed-onprem-bundle
+├── pyproject.toml                  # hatchling；dependencies=[requests, tomli(<3.11 marker)]；[project.scripts] zed-onprem-bundle
+├── uv.lock                         # uv sync 生成（提交，锁定依赖）
+├── .python-version                 # uv 固定 python 版本（3.12）
 ├── README.md
 ├── .gitignore                      # = 官方 Python.gitignore 原文 + config/enabled/ 例外（见下）
-├── DESIGN.md                       # 本文档
+├── docs/
+│   └── DESIGN.md                     # 本文档
 ├── .github/
 │   └── workflows/build-bundle.yml  # ★ CI 构建定义（见 §5.7）
 ├── src/
@@ -217,11 +220,11 @@ ln -s ../available/icons.toml        # 美化：图标
 
 ## 5. 构建流水线
 
-> 全程联网；每步幂等（产物存在则跳过）；本地与 CI 同一命令：`zed-onprem-bundle build`（`pip install -e .` 后）。
+> 全程联网；每步幂等（产物存在则跳过）；本地与 CI 同一命令：`zed-onprem-bundle build`（`uv sync` 后）。
 > 阶段编号与 `src/` 模块一一对应（cli.py 按序调用：config 合并 → P1..P6，单阶段失败 → 非零退出，可修复后重跑）。
 
 ### P0 环境检查
-- **本机**：python3 >= 3.11、node/npm、git；env：`ZED_REPO`（默认 `/home/dev/rust-dev/zed`）、`EXTENSIONS_REPO`（默认 `/home/dev/rust-dev/extensions`）、`ZED_RELEASE_TAG`/`EXTENSIONS_REV`（版本控制，优先级见 §4.2）；`pip install -e .`
+- **本机**：uv（uv python install 3.12）、node/npm、git；env：`ZED_REPO`（默认 `/home/dev/rust-dev/zed`）、`EXTENSIONS_REPO`（默认 `/home/dev/rust-dev/extensions`）、`ZED_RELEASE_TAG`/`EXTENSIONS_REV`（版本控制，优先级见 §4.2）；`uv sync`（首次；此后 `uv run zed-onprem-bundle ...`）
 - **CI**（见 §5.7）：由 workflow 显式准备，脚本内仅做存在性断言（不自动安装系统包）
 - **配置合并先行**（config.py）：§4 规则产出合并配置，供 P1-P6 使用
 - `wasm32-wasip2` target：CI 用 `rustup target add` 显式安装；本机已装
@@ -376,7 +379,7 @@ jobs:
     steps: [同下，平台参数 ZED_BUNDLE_PLATFORM=windows-x64，产物 zed-onprem-bundle-windows-x64]
   # 两 job 共用的步骤模板（bundle 工程内保留一份带注释的完整 yaml）：
   #   checkout bundle + extensions + zed 三仓库（同现有）
-  #   setup-python 3.12 → pip install -e ./bundle
+  #   astral-sh/setup-uv → uv sync --project ./bundle
   #   setup-node 22（linux 构建 npm 依赖用；windows 同）
   #   dtolnay/rust-toolchain@stable targets wasm32-wasip2（仅 windows job 需要？——不，
   #   zed-extension CLI 默认走预编译下载，cargo build 仅作兜底，两平台都保留）
@@ -417,8 +420,8 @@ jobs:
 ```
 
 要点：
-- **环境显式声明**：python 3.12（tomllib 可用）、node 22、rust stable + wasm32-wasip2、WASI SDK 由 P1 下载——不依赖 runner 隐式状态
-- **单一命令入口**：CI 与本地均为 `zed-onprem-bundle build`（pip install -e 后）；**CI 无 `config/enabled/`（git 忽略）→ 默认空 bundle，workflow 需先 `ln -s` 所需 preset 到 enabled/**（例：`10-zed.toml` + `20-web.toml` + `30-eda.toml`）；平台经 `ZED_BUNDLE_PLATFORM` 指定（linux job / windows job 各设各的）
+- **环境显式声明**：uv 管理 python 3.12（`uv python install 3.12`，tomllib 可用）、node 22、rust stable + wasm32-wasip2、WASI SDK 由 P1 下载——不依赖 runner 隐式状态
+- **单一命令入口**：CI 与本地均为 `zed-onprem-bundle build`（uv sync 后，全程 uv 禁止 pip）；**CI 无 `config/enabled/`（git 忽略）→ 默认空 bundle，workflow 需先 `ln -s` 所需 preset 到 enabled/**（例：`core-zed.toml` + `core-node.toml` + `web.toml` + `eda.toml`）；平台经 `ZED_BUNDLE_PLATFORM` 指定（linux job / windows job 各设各的）
 - **双平台产物**：linux → tar.gz；windows → zip（release 双资产，均含 BUILD_INFO）
 - **版本控制**：tag `bundle-<zed-tag>` 推送 → workflow 解析出 `ZED_RELEASE_TAG` 传入构建，产物与上游 tag 严格对应；手动触发 → 空 = 最新 stable（构建后记录到 BUILD_INFO）
 - **发布**：release job 仅在 tag 推送时运行：tar.gz 打包 → `gh release create`（gh CLI runner 预装；permissions.contents: write）；workflow_dispatch 只出 artifact

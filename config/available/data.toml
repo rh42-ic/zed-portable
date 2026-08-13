@@ -1,0 +1,6 @@
+# config/available/data.toml —— 领域：数据/数据库（sql/dbt/sqlmesh 等，id 均核验存在）
+# sql 为纯语法扩展，完全离线安全
+[extensions]
+ids = [
+  "sql", "csv", "dbt", "sqlmesh", "dbml", "snowflake",
+]

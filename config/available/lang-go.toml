@@ -1,0 +1,8 @@
+# config/available/lang-go.toml —— 语言：go（id 均核验存在）
+[extensions]
+ids = [
+  "go-snippets", "golangci-lint",
+]
+
+[lsp.github]
+gopls = false                 # 默认关闭：gopls 需 go 工具链（go install）预编译，离线环境需另行准备

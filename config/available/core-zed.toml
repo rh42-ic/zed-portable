@@ -1,0 +1,6 @@
+# config/available/core-zed.toml —— 核心：Zed 本体（版本/二进制来源）
+# 链接它才有 Zed 本体；不链接则 [zed] 走 CLI 兜底默认（channel=stable, binary=download）
+[zed]
+channel = "stable"            # stable | preview | dev
+release_tag = ""              # 空=解析 channel 最新 stable；env ZED_RELEASE_TAG 覆盖（构建时可控）
+binary = "download"           # download=官方 release；或 /path/to/local/zed 复用本地构建

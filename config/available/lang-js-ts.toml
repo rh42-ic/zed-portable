@@ -1,0 +1,10 @@
+# config/available/lang-js-ts.toml —— 语言：js/ts（id 均核验存在）
+# 与 web.toml 部分重叠：本 preset 为纯语言栈（不含框架扩展），web.toml 含框架 + 全套 npm LSP
+[extensions]
+ids = [
+  "tsgo", "ts-macro", "tsrx",
+]
+
+[lsp.npm]
+typescript = true             # typescript + typescript-language-server
+vtsls = true

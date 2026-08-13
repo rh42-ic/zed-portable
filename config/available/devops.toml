@@ -1,0 +1,8 @@
+# config/available/devops.toml —— 领域：devops/运维（docker/terraform/k8s/nginx 等，id 均核验存在）
+# 注意：docker-compose/dockerfile 扩展含 LSP 需运行时下载（离线降级为语法高亮，见 DESIGN.md §5.5）
+[extensions]
+ids = [
+  "docker-compose", "dockerfile", "terraform", "opentofu", "tflint",
+  "helm", "nginx", "github-actions", "hurl", "jq",
+  "kubernetes-snippets", "taskfile",
+]

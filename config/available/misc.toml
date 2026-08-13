@@ -1,0 +1,7 @@
+# config/available/misc.toml —— 其它：未分类杂项（id 均核验存在）
+# 注：yaml 无此目录（仓库仅 rlsp-yaml 为 LSP 扩展），已剔除；yaml 语法由 web.toml 的 lsp.npm.yaml 覆盖
+[extensions]
+ids = [
+  "caddyfile", "make", "toml", "just", "xml", "json5", "editorconfig",
+  "d2", "mermaid", "plantuml", "cspell", "markdownlint", "ltex",
+]

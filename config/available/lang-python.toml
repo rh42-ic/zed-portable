@@ -1,0 +1,13 @@
+# config/available/lang-python.toml —— 语言：python（id 均核验存在）
+# 核心 LSP 走 ruff（GitHub 型）+ pyright（npm 型）
+[extensions]
+ids = [
+  "python-snippets", "django", "django-snippets", "pyrefly", "pylsp",
+  "fastapi-snippets", "flask-snippets",
+]
+
+[lsp.github]
+ruff = true                   # astral-sh/ruff，离线查版本失败回退缓存
+
+[lsp.npm]
+pyright = true                # node_modules/pyright

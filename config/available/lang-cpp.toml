@@ -1,0 +1,8 @@
+# config/available/lang-cpp.toml —— 语言：c/c++（id 均核验存在）
+[extensions]
+ids = [
+  "neocmake", "cpp2",
+]
+
+[lsp.github]
+clangd = true                 # clangd/clangd

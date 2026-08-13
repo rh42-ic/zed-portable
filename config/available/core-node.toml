@@ -1,0 +1,7 @@
+# config/available/core-node.toml —— 核心：Node 运行时 + debugpy
+# 链接它才有 node 运行时（npm 型 LSP / eslint 编译依赖）与 python 调试适配器
+[node]                        # 版本与 Zed 源码硬编码一致（crates/node_runtime/src/node_runtime.rs:606），勿改
+version = "v24.11.0"
+
+[debug]
+debugpy = true                # 预置 debugpy 到 debug_adapters/Debugpy/（离线可用的 python 调试）

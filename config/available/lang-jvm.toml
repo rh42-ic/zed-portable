@@ -1,0 +1,5 @@
+# config/available/lang-jvm.toml —— 语言：jvm 生态（java/kotlin/scala/groovy，id 均核验存在）
+[extensions]
+ids = [
+  "java", "kotlin", "scala", "groovy",
+]

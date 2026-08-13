@@ -1,0 +1,18 @@
+# config/available/web.toml —— 领域：web 开发（扩展 id 已核验存在；tailwind 扩展无此目录已剔除，LSP 保留）
+[extensions]
+rev = ""                      # extensions 仓库 commit（空=HEAD）；env EXTENSIONS_REV 覆盖
+ids = [
+  "vue", "svelte", "astro", "angular",
+  "graphql", "prisma", "tsgo", "css-modules-kit",
+]
+
+[lsp.npm]                     # web 开发主要走 npm 型 LSP（离线 npm info ~5s 超时后回退缓存）
+typescript = true             # typescript + typescript-language-server
+vtsls = true
+yaml = true
+css = true
+bash = true
+tailwind = true
+pyright = true
+basedpyright = false
+eslint = true                 # 固定 3.0.24，源码编译（server_path 存在即零网络）

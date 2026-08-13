@@ -1,0 +1,244 @@
+# =============================================================================
+# zed-onprem-bundle 构建工作流
+#
+# 职责划分：workflow 只做「环境准备 + preset 选择」，业务逻辑全部走与本地相同的
+# 单一命令入口 `zed-onprem-bundle build`（uv sync 后），保证 CI 与本地行为一致、可复现。
+#
+# 触发方式：
+#   - workflow_dispatch（手动）：只产出构建 artifact（默认解析 channel 最新 stable）
+#   - push tag `bundle-*`：解析 ZED_RELEASE_TAG 后构建，并自动打包挂 GitHub release
+#
+# 要点：
+#   - 环境显式声明：uv 管理 python 3.12（tomllib 可用）、node 22、rust stable +
+#     wasm32-wasip2 target；WASI SDK 由 P1 自行下载（WASI_SDK_VERSION=25）。
+#     全程 uv，禁止 pip。
+#   - 双平台产物：linux-x64 → tar.gz；windows-x64 → zip（release 双资产，均含 BUILD_INFO）。
+#   - 版本控制：tag `bundle-<zed-tag>` → ZED_RELEASE_TAG=<zed-tag> 传入构建，
+#     产物与上游 tag 严格对应；手动触发留空 = 最新 stable（实际值记入 BUILD_INFO）。
+#   - 发布：release job 仅在 tag 推送时运行（permissions.contents: write），
+#     使用 runner 预装的 gh CLI，无需第三方 action。
+#   - 扩展 submodule：extensions 仓库由 actions/checkout 全量拉取（fetch-depth: 1），
+#     submodules 不自动 init（体积巨大）；P2 在 EXTENSIONS_REPO 内按需
+#     `git submodule update --init --depth 1 extensions/<id>`（网络在 CI 可用）。
+#   - GITHUB_TOKEN 自动注入：GitHub API 限流（无 token 60 req/h，CI 有 token 1000/h）。
+# =============================================================================
+name: build-bundle
+
+on:
+  workflow_dispatch:          # 手动触发：只出 artifact
+  push:
+    tags: ["bundle-*"]        # 打 tag 即发布构建
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # 共享步骤模板：build-linux / build-windows 两 job 结构一致，仅平台参数不同
+  #   ZED_BUNDLE_PLATFORM: linux-x64 | windows-x64
+  #   artifact name:       zed-onprem-bundle-linux-x64 | zed-onprem-bundle-windows-x64
+  # ---------------------------------------------------------------------------
+  build-linux:
+    runs-on: ubuntu-latest
+    env:
+      ZED_BUNDLE_PLATFORM: linux-x64
+    steps:
+      - name: Checkout bundle repo
+        uses: actions/checkout@v4
+        with:
+          path: bundle
+
+      - name: Checkout zed-industries/extensions (full, depth 1; submodules NOT auto-init)
+        uses: actions/checkout@v4
+        with:
+          repository: zed-industries/extensions
+          path: extensions
+          fetch-depth: 1
+          # submodules 不自动拉取（仓库巨大）；P2 在 EXTENSIONS_REPO 内按需
+          # `git submodule update --init --depth 1 extensions/<id>` 初始化清单内扩展
+
+      - name: Checkout zed-industries/zed (shallow, depth 1, no submodules)
+        uses: actions/checkout@v4
+        with:
+          repository: zed-industries/zed
+          path: zed
+          fetch-depth: 1
+          # ZED_REPO 用于解析 release 资产名 / zed-extension CLI 的 $SHA（ZED_RELEASE_TAG 对应 commit）
+          submodules: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: latest     # uv 版本显式声明 latest
+
+      - name: uv sync (python 3.12 + project deps)
+        run: |
+          uv python install 3.12
+          uv sync --project ./bundle
+        shell: bash
+        # windows-latest 下 bash 为 Git Bash，uv sync 同样可用（uv 跨平台）
+
+      - name: Set up Node 22 (npm 型 LSP 安装 / eslint 编译用预置 node；setup-node 供构建阶段其他 npm 工具)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Set up Rust stable + wasm32-wasip2 (兜底 zed-extension cargo build；主路径下载预编译)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-wasip2
+
+      - name: Link enabled presets (CI 每次重建 config/enabled/)
+        run: |
+          cd bundle/config/enabled
+          ln -s ../available/core-zed.toml ../available/core-node.toml \
+                ../available/web.toml ../available/eda.toml
+          ls -l
+        shell: bash
+        # enabled/ 被 git 忽略，CI checkout 后为空；这里 ln -s 决定本次构建安装什么。
+        # 需要更多组件时在此追加（如 ../available/themes.toml ../available/lang-rust.toml）。
+
+      - name: Resolve ZED_RELEASE_TAG from tag
+        run: |
+          if [[ "${GITHUB_REF_NAME}" == bundle-* ]]; then
+            echo "ZED_RELEASE_TAG=${GITHUB_REF_NAME#bundle-}" >> "$GITHUB_ENV"
+            echo "Resolved ZED_RELEASE_TAG=${GITHUB_REF_NAME#bundle-}"
+          else
+            echo "No bundle- tag; ZED_RELEASE_TAG left empty (latest stable)"
+          fi
+        shell: bash
+
+      - name: Build bundle
+        run: uv run --project ./bundle zed-onprem-bundle build
+        shell: bash
+        env:
+          ZED_REPO: ${{ github.workspace }}/zed
+          EXTENSIONS_REPO: ${{ github.workspace }}/extensions
+          ZED_RELEASE_TAG: ${{ env.ZED_RELEASE_TAG }}   # tag 触发时从 GITHUB_REF_NAME 解析，dispatch 留空
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}      # 提高 GitHub API 限流额度（60/h → 1000/h）
+          WASI_SDK_VERSION: "25"                         # 与 P1 toolchain 下载对齐
+          ZED_BUNDLE_PLATFORM: ${{ env.ZED_BUNDLE_PLATFORM }}
+
+      - name: Upload bundle artifact (linux-x64)
+        uses: actions/upload-artifact@v4
+        with:
+          name: zed-onprem-bundle-linux-x64
+          path: bundle/dist/
+          if-no-files-found: error
+
+  build-windows:
+    runs-on: windows-latest
+    env:
+      ZED_BUNDLE_PLATFORM: windows-x64
+    steps:
+      - name: Checkout bundle repo
+        uses: actions/checkout@v4
+        with:
+          path: bundle
+
+      - name: Checkout zed-industries/extensions (full, depth 1; submodules NOT auto-init)
+        uses: actions/checkout@v4
+        with:
+          repository: zed-industries/extensions
+          path: extensions
+          fetch-depth: 1
+
+      - name: Checkout zed-industries/zed (shallow, depth 1, no submodules)
+        uses: actions/checkout@v4
+        with:
+          repository: zed-industries/zed
+          path: zed
+          fetch-depth: 1
+          submodules: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: latest
+
+      - name: uv sync (python 3.12 + project deps)
+        run: |
+          uv python install 3.12
+          uv sync --project ./bundle
+        shell: bash
+        # windows-latest 自带 Git Bash；uv sync 跨平台一致
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Set up Rust stable + wasm32-wasip2 (兜底 zed-extension cargo build)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-wasip2
+
+      - name: Link enabled presets (CI 每次重建 config/enabled/)
+        run: |
+          cd bundle/config/enabled
+          ln -s ../available/core-zed.toml ../available/core-node.toml \
+                ../available/web.toml ../available/eda.toml
+          ls -l
+        shell: bash
+
+      - name: Resolve ZED_RELEASE_TAG from tag
+        run: |
+          if [[ "${GITHUB_REF_NAME}" == bundle-* ]]; then
+            echo "ZED_RELEASE_TAG=${GITHUB_REF_NAME#bundle-}" >> "$GITHUB_ENV"
+            echo "Resolved ZED_RELEASE_TAG=${GITHUB_REF_NAME#bundle-}"
+          else
+            echo "No bundle- tag; ZED_RELEASE_TAG left empty (latest stable)"
+          fi
+        shell: bash
+
+      - name: Build bundle
+        run: uv run --project ./bundle zed-onprem-bundle build
+        shell: bash
+        env:
+          ZED_REPO: ${{ github.workspace }}/zed
+          EXTENSIONS_REPO: ${{ github.workspace }}/extensions
+          ZED_RELEASE_TAG: ${{ env.ZED_RELEASE_TAG }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          WASI_SDK_VERSION: "25"
+          ZED_BUNDLE_PLATFORM: ${{ env.ZED_BUNDLE_PLATFORM }}
+
+      - name: Upload bundle artifact (windows-x64)
+        uses: actions/upload-artifact@v4
+        with:
+          name: zed-onprem-bundle-windows-x64
+          path: bundle/dist/
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------------------
+  # 发布：仅 tag 推送（bundle-*）时运行；打包双平台产物并挂 GitHub release
+  # ---------------------------------------------------------------------------
+  release:
+    needs: [build-linux, build-windows]
+    if: startsWith(github.ref, 'refs/tags/bundle-')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write          # gh release create 需要
+    steps:
+      - name: Download linux artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: zed-onprem-bundle-linux-x64
+          path: bundle-dist-linux
+
+      - name: Download windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: zed-onprem-bundle-windows-x64
+          path: bundle-dist-windows
+
+      - name: Package
+        shell: bash
+        run: |
+          tar -C bundle-dist-linux -czf zed-onprem-bundle-${GITHUB_REF_NAME#bundle-}-linux-x64.tar.gz .
+          (cd bundle-dist-windows && zip -r ../zed-onprem-bundle-${GITHUB_REF_NAME#bundle-}-windows-x64.zip .)
+          ls -lh zed-onprem-bundle-*
+
+      - name: Create GitHub release
+        run: |
+          gh release create "$GITHUB_REF_NAME" zed-onprem-bundle-*.tar.gz zed-onprem-bundle-*.zip \
+            --title "zed-onprem-bundle ${GITHUB_REF_NAME#bundle-}" \
+            --notes "离线 bundle，对应 Zed ${{ github.ref_name }}（详见产物内 BUILD_INFO）"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

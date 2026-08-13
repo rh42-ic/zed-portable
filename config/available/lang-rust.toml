@@ -1,0 +1,8 @@
+# config/available/lang-rust.toml —— 语言：rust（id 均核验存在）
+[extensions]
+ids = [
+  "cargo-tom", "rust-snippets", "rust-workflow-snippets",
+]
+
+[lsp.github]
+rust-analyzer = true          # rust-lang/rust-analyzer

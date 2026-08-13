@@ -1,0 +1,8 @@
+# config/available/themes.toml —— 美化：精选主题（目录名以 extensions 仓库实际为准）
+# 注：rose-pine 无此目录（仓库为 rose-pine-theme），已剔除；catppuccin/ayu-theme/material-theme 均按实际目录名
+[extensions]
+ids = [
+  "catppuccin", "tokyo-night", "dracula", "gruvbox-material", "nord",
+  "one-dark-pro", "solarized", "everforest", "kanagawa-themes",
+  "ayu-theme", "material-theme",
+]

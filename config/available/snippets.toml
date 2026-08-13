@@ -1,0 +1,6 @@
+# config/available/snippets.toml —— 美化：热门 snippets 合集（id 均核验存在）
+[extensions]
+ids = [
+  "javascript-snippets", "typescript-snippets", "react-snippets", "html-snippets",
+  "python-snippets", "rust-snippets", "go-snippets", "emmet", "turbo-log-snippets",
+]

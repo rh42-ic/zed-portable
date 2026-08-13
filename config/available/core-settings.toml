@@ -1,0 +1,7 @@
+# config/available/core-settings.toml —— 核心：settings.json 默认体验片段（可覆盖）
+# 内容写入 dist/data/config/settings.json（--user-data-dir 后 config_dir=data_dir/config）
+# 仅作合理默认值；用户可用 zz-mine.toml 的 [settings] 覆盖（enabled 内后合并者胜）
+[settings]
+theme = "One Dark"
+tab_size = 4
+autosave = "on_focus_change"

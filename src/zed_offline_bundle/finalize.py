@@ -1,0 +1,258 @@
+"""P6 收尾：settings.json + 启动脚本 + 产物断言 + BUILD_INFO + 体积报告（§5 P6）。
+
+断言失败 → raise AssertionError（区别于 P4/P5 的告警跳过语义）；其余步骤幂等。
+目标路径重算复用 lsp_github.lsp_github_target / lsp_npm.npm_server_path，
+与安装阶段同一份落位规则，避免断言与安装漂移。
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import subprocess
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Mapping
+
+from .lsp_github import lsp_github_target
+from .lsp_npm import npm_server_path
+
+DEFAULT_EXTENSIONS_REPO = "/home/dev/rust-dev/extensions"
+
+
+def _deep_merge(base: dict, overlay: dict) -> dict:
+    """键级递归 deep merge（dict 递归、其余后者覆盖）——与 config._deep_merge 同语义。"""
+    for key, value in overlay.items():
+        if key in base and isinstance(base[key], dict) and isinstance(value, dict):
+            _deep_merge(base[key], value)
+        else:
+            base[key] = value
+    return base
+
+
+def _merge_settings(cfg) -> dict:
+    """settings.json 内容：telemetry/auto_update 默认与 cfg.settings deep merge（后者覆盖）。
+
+    注：base 每调用重建字面量（不可用模块级常量浅拷贝——内层 dict 共享会
+    被 deep merge 就地修改，污染后续调用）。
+    """
+    base = {"telemetry": {"metrics": False, "diagnostics": False}, "auto_update": False}
+    user = cfg.get("settings")
+    if isinstance(user, dict):
+        return _deep_merge(base, dict(user))
+    return base
+
+
+def _write_settings(cfg, dist_dir: Path) -> None:
+    # 落位 data/config/settings.json：config_dir = data_dir/config（paths.rs:124-125），
+    # settings 文件读 config_dir/settings.json（paths.rs:280）——放 data/ 根目录不生效
+    settings = _merge_settings(cfg)
+    dest = dist_dir / "data" / "config" / "settings.json"
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_text(json.dumps(settings, indent=2) + "\n")
+    print(f"settings.json 已写入：{dest}")
+
+
+def _write_run_sh(dist_dir: Path) -> None:
+    """Linux 启动脚本（双平台都生成，按平台使用；windows 用 run.ps1）。"""
+    root = '$(dirname "$(readlink -f "$0")")'
+    content = (
+        "#!/usr/bin/env bash\n"
+        "# Linux 离线启动入口（windows 请用 run.ps1；本文件由构建生成）\n"
+        f'exec "{root}/bin/zed" --user-data-dir "{root}/data" "$@"\n'
+    )
+    dest = dist_dir / "run.sh"
+    dest.write_text(content)
+    dest.chmod(0o755)
+    print(f"run.sh 已生成：{dest}")
+
+
+def _write_run_ps1(dist_dir: Path) -> None:
+    """Windows 启动脚本（双平台都生成，按平台使用；linux 用 run.sh）。"""
+    content = (
+        "# Windows 离线启动入口（linux 请用 run.sh；本文件由构建生成）\n"
+        "$root = Split-Path -Parent $MyInvocation.MyCommand.Path\n"
+        '& (Join-Path $root "bin\\zed.exe") --user-data-dir (Join-Path $root "data") @args\n'
+    )
+    dest = dist_dir / "run.ps1"
+    dest.write_text(content)
+    print(f"run.ps1 已生成：{dest}")
+
+
+def _assert_products(
+    cfg,
+    platform: str,
+    dist_dir: Path,
+    np,
+    failed_gh: list[str],
+    failed_npm: list[str],
+    skipped_exts: list[str],
+) -> None:
+    """产物存在性断言（§5 P6 第 3 条）；任一缺失 → raise AssertionError 列出缺失项。
+
+    跳过规则：安装失败的 LSP（failed_gh/failed_npm）与跳过的扩展（skipped_exts）
+    不断言；gopls 目标名含动态版本 → 不断言（lsp_github_target 返回 None）。
+    """
+    dist_dir = Path(dist_dir)
+    missing: list[str] = []
+
+    def check(path: Path, label: str) -> None:
+        if not path.exists():
+            missing.append(f"{label}: {path}")
+
+    check(np.node_bin, "node 运行时")
+
+    failed_gh_set = set(failed_gh or [])
+    for name, flag in sorted(((cfg.get("lsp") or {}).get("github") or {}).items()):
+        if not flag or name in failed_gh_set:
+            continue
+        target = lsp_github_target(cfg, platform, dist_dir, name)
+        if target is not None:
+            check(target, f"github LSP {name}")
+
+    failed_npm_set = set(failed_npm or [])
+    for name, flag in sorted(((cfg.get("lsp") or {}).get("npm") or {}).items()):
+        if not flag or name in failed_npm_set:
+            continue
+        path = npm_server_path(cfg, platform, dist_dir, name)
+        if path is not None:
+            check(path, f"npm LSP {name}")
+
+    skipped = set(skipped_exts or [])
+    for eid in (cfg.get("extensions") or {}).get("ids") or []:
+        if eid in skipped:
+            continue
+        check(
+            dist_dir / "data" / "extensions" / "installed" / eid / "extension.wasm",
+            f"扩展 {eid}",
+        )
+
+    if missing:
+        raise AssertionError("产物断言失败，缺失：\n  " + "\n  ".join(missing))
+    print("产物断言通过：node / github LSP / npm LSP / 扩展 全部在位")
+
+
+def _extensions_commit(cfg, env: Mapping[str, str]) -> str:
+    """extensions commit 优先级：env EXTENSIONS_REV → cfg extensions.rev → git rev-parse（失败 "unknown"）。"""
+    env_rev = (env.get("EXTENSIONS_REV") or "").strip()
+    if env_rev:
+        return env_rev
+    cfg_rev = str(((cfg.get("extensions") or {}).get("rev") or "")).strip()
+    if cfg_rev:
+        return cfg_rev
+    repo = env.get("EXTENSIONS_REPO") or DEFAULT_EXTENSIONS_REPO
+    try:
+        proc = subprocess.run(
+            ["git", "-C", repo, "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if proc.returncode == 0 and proc.stdout.strip():
+            return proc.stdout.strip()
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    return "unknown"
+
+
+def _build_info_text(
+    cfg,
+    tc,
+    platform: str,
+    config_files: list[str],
+    failed_gh: list[str],
+    failed_npm: list[str],
+    skipped_exts: list[str],
+    *,
+    env: Mapping[str, str] | None = None,
+) -> str:
+    """BUILD_INFO 内容（key=value，逐行；env 可注入便于单测）。"""
+    if env is None:
+        env = os.environ
+    names = ",".join(Path(f).name for f in config_files)
+    warnings = ",".join(
+        list(failed_gh or []) + list(failed_npm or []) + list(skipped_exts or [])
+    )
+    lines = [
+        f"bundle_version={tc.zed_tag}",
+        f"zed_commit={tc.zed_commit}",
+        f"extensions_commit={_extensions_commit(cfg, env)}",
+        f"platform={platform}",
+        f"build_date={datetime.now(timezone.utc).astimezone().isoformat(timespec='seconds')}",
+        f"config_files={names}",
+        f"warnings={warnings}",
+    ]
+    return "\n".join(lines) + "\n"
+
+
+def _write_build_info(
+    cfg,
+    tc,
+    platform: str,
+    dist_dir: Path,
+    config_files: list[str],
+    failed_gh: list[str],
+    failed_npm: list[str],
+    skipped_exts: list[str],
+) -> None:
+    dest = dist_dir / "BUILD_INFO"
+    dest.write_text(
+        _build_info_text(cfg, tc, platform, config_files, failed_gh, failed_npm, skipped_exts)
+    )
+    print(f"BUILD_INFO 已写入：{dest}")
+
+
+def _du_mb(path: Path) -> float:
+    """目录体积（MB，1 MiB = 1024*1024 字节；近似 du -sk/1024）。"""
+    if not path.is_dir():
+        return 0.0
+    total = 0
+    for p in path.rglob("*"):
+        if p.is_file():
+            try:
+                total += p.stat().st_size
+            except OSError:
+                pass
+    return total / (1024 * 1024)
+
+
+def _report_sizes(dist_dir: Path) -> None:
+    """体积报告：data 下 node/languages/extensions 各组件 + bundle 总计（MB）。"""
+    data = dist_dir / "data"
+    rows = [
+        ("node", data / "node"),
+        ("languages", data / "languages"),
+        ("extensions", data / "extensions"),
+    ]
+    print("bundle 体积报告（MB）：")
+    for label, path in rows:
+        print(f"  {label:<12s} {_du_mb(path):>9.1f}")
+    print(f"  {'bundle 总计':<12s} {_du_mb(dist_dir):>9.1f}")
+
+
+def finalize(
+    cfg,
+    platform: str,
+    dist_dir: Path,
+    tc,
+    np,
+    failed_gh: list[str],
+    failed_npm: list[str],
+    skipped_exts: list[str],
+    config_files: list[str],
+) -> None:
+    """P6 主流程：settings.json → 启动脚本 → 产物断言 → BUILD_INFO → 体积报告。"""
+    dist_dir = Path(dist_dir)
+    dist_dir.mkdir(parents=True, exist_ok=True)
+
+    # 1) settings.json（telemetry/auto_update 默认 + cfg.settings deep merge）
+    _write_settings(cfg, dist_dir)
+    # 2) 启动脚本（双平台都生成，按平台使用）
+    _write_run_sh(dist_dir)
+    _write_run_ps1(dist_dir)
+    # 3) 产物断言（缺失 → AssertionError，与 P4/P5 告警语义区分）
+    _assert_products(cfg, platform, dist_dir, np, failed_gh, failed_npm, skipped_exts)
+    # 4) BUILD_INFO
+    _write_build_info(cfg, tc, platform, dist_dir, config_files, failed_gh, failed_npm, skipped_exts)
+    # 5) 体积报告
+    _report_sizes(dist_dir)

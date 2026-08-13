@@ -1,0 +1,6 @@
+# config/available/icons.toml —— 美化：图标（id 均核验存在）
+[extensions]
+ids = [
+  "file-icons", "material-icon-theme", "bearded-icons", "catppuccin-icons",
+  "vscode-icons", "jetbrains-icons", "ferret", "colored-zed-icons-theme",
+]

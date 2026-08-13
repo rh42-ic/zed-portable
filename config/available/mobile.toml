@@ -1,0 +1,6 @@
+# config/available/mobile.toml —— 领域：移动端（dart/flutter/swift，id 均核验存在）
+# 注：dart 扩展运行时可能下载 dart 相关工具（离线降级为语法高亮，见 DESIGN.md §5.5）
+[extensions]
+ids = [
+  "dart", "flutter-snippets", "swift",
+]

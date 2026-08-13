@@ -1,0 +1,19 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "zed-onprem-bundle"
+version = "0.1.0"
+description = "自包含离线 Zed 分发包构建器（构建时联网下载，运行时离线可用）"
+requires-python = ">=3.11"
+dependencies = [
+    "requests",
+    "tomli; python_version < '3.11'",
+]
+
+[project.scripts]
+zed-onprem-bundle = "zed_offline_bundle.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/zed_offline_bundle"]

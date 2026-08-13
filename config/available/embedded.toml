@@ -1,0 +1,5 @@
+# config/available/embedded.toml —— 领域：嵌入式（arduino/platformio/openscad 等，id 均核验存在）
+[extensions]
+ids = [
+  "arduino", "platformio", "openscad", "pioasm", "linkerscript",
+]

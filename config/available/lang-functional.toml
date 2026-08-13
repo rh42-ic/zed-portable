@@ -1,0 +1,7 @@
+# config/available/lang-functional.toml —— 语言：函数式（haskell/ocaml/elixir/erlang/clojure 等，id 均核验存在）
+# 注：elixir/erlang 扩展含 LSP 运行时下载（离线降级为语法高亮，见 DESIGN.md §5.5）
+[extensions]
+ids = [
+  "haskell", "ocaml", "elixir", "erlang", "clojure", "fsharp",
+  "lean4", "racket", "scheme", "koka",
+]
