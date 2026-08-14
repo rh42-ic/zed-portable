@@ -278,6 +278,8 @@ def _init_submodule(eid: str, repo: Path) -> bool:
             cwd=str(repo),
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=300,
         )
     except subprocess.TimeoutExpired:
@@ -333,7 +335,7 @@ def _package_extension(
         "--output-dir", str(out_dir),
     ]
     try:
-        proc = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=600)
+        proc = subprocess.run(cmd, env=env, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=600)
     except subprocess.TimeoutExpired:
         print(f"  WARN: packaging timed out (600s): {eid}")
         return False

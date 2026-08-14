@@ -117,7 +117,7 @@ def _self_check(paths: NodePaths, node_root: Path, is_windows: bool) -> bool:
         "--globalconfig", str(node_root / "blank_global_npmrc"),
     ]
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+        proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60)
     except (OSError, subprocess.TimeoutExpired):
         return False
     return proc.returncode == 0

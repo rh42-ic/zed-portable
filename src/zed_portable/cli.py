@@ -148,6 +148,12 @@ def cmd_build(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> None:
+    # Windows CI 上 locale 编码为 cp1252，非 ASCII 输出会崩——统一 UTF-8 + 不可编码字符替换兜底
+    for _stream in (sys.stdout, sys.stderr):
+        try:
+            _stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, OSError, ValueError):
+            pass
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",

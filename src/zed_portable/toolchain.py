@@ -344,7 +344,7 @@ def _run_zed_installer(installer: Path, install_dir: Path) -> None:
         "/TASKS=",
     ]
     try:
-        proc = subprocess.run(args, capture_output=True, text=True, timeout=600)
+        proc = subprocess.run(args, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=600)
     except subprocess.TimeoutExpired:
         raise RuntimeError(f"Zed installer timed out (600s): {installer}")
     if proc.returncode != 0:
@@ -441,6 +441,8 @@ def _verify_zed(bin_path: Path) -> None:
             [str(bin_path), "--version"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=30,
         )
     except subprocess.TimeoutExpired:

@@ -95,6 +95,8 @@ def _run_npm(np, args: list[str], *, timeout: int, cwd: Path | None = None, is_w
                 cwd=str(cwd) if cwd else None,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 timeout=timeout,
             )
         return subprocess.run(
@@ -102,6 +104,8 @@ def _run_npm(np, args: list[str], *, timeout: int, cwd: Path | None = None, is_w
             cwd=str(cwd) if cwd else None,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=timeout,
         )
     except (OSError, subprocess.TimeoutExpired):

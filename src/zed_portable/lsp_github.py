@@ -113,6 +113,8 @@ def _version_ok(bin_path: Path) -> bool:
             [str(bin_path), "--version"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=30,
         )
     except (OSError, subprocess.TimeoutExpired):
@@ -123,7 +125,7 @@ def _version_ok(bin_path: Path) -> bool:
 def _write_metadata(path: Path, digest: str) -> None:
     """写 <server>.metadata：{"metadata_version": 1, "digest": <资产字节 sha256>}（§2.1 #1）。"""
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({"metadata_version": 1, "digest": digest}, indent=2) + "\n")
+    path.write_text(json.dumps({"metadata_version": 1, "digest": digest}, indent=2) + "\n", encoding="utf-8")
 
 
 def _cache_hit(target: Path, metadata: Path | None, digest: str, version_check: bool) -> bool:
@@ -138,7 +140,7 @@ def _cache_hit(target: Path, metadata: Path | None, digest: str, version_check: 
         if not metadata.is_file():
             return False
         try:
-            recorded = json.loads(metadata.read_text()).get("digest")
+            recorded = json.loads(metadata.read_text(encoding="utf-8")).get("digest")
         except (OSError, ValueError):
             return False
         if recorded != digest:
@@ -265,6 +267,8 @@ def _install_gopls(plat: str, exe: str, dist_dir: Path) -> bool:
             env=env,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=900,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
@@ -297,6 +301,8 @@ def _gopls_version(bin_path: Path) -> str:
             [str(bin_path), "version"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=30,
         )
         text = proc.stdout or proc.stderr
@@ -309,7 +315,7 @@ def _gopls_version(bin_path: Path) -> str:
 def _go_version(go: str) -> str:
     """解析 `go version` 输出中的 goX.Y.Z（如 "go version go1.24.1 linux/amd64"）。"""
     try:
-        proc = subprocess.run([go, "version"], capture_output=True, text=True, timeout=30)
+        proc = subprocess.run([go, "version"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30)
         text = proc.stdout or proc.stderr
     except (OSError, subprocess.TimeoutExpired):
         text = ""
