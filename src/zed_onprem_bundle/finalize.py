@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Mapping
 
+from .extensions import is_valid_extension_artifact
 from .lsp_github import lsp_github_target
 from .lsp_npm import npm_server_path
 
@@ -54,11 +55,11 @@ def _write_settings(cfg, dist_dir: Path) -> None:
 
 
 def _write_run_sh(dist_dir: Path) -> None:
-    """Linux 启动脚本（双平台都生成，按平台使用；windows 用 run.ps1）。"""
+    """Linux 启动脚本（仅 linux 平台生成；windows 平台生成 run.ps1）。"""
     root = '$(dirname "$(readlink -f "$0")")'
     content = (
         "#!/usr/bin/env bash\n"
-        "# Linux 离线启动入口（windows 请用 run.ps1；本文件由构建生成）\n"
+        "# Linux 离线启动入口（本文件由构建生成）\n"
         f'exec "{root}/bin/zed" --user-data-dir "{root}/data" "$@"\n'
     )
     dest = dist_dir / "run.sh"
@@ -68,9 +69,9 @@ def _write_run_sh(dist_dir: Path) -> None:
 
 
 def _write_run_ps1(dist_dir: Path) -> None:
-    """Windows 启动脚本（双平台都生成，按平台使用；linux 用 run.sh）。"""
+    """Windows 启动脚本（仅 windows 平台生成；linux 平台生成 run.sh）。"""
     content = (
-        "# Windows 离线启动入口（linux 请用 run.sh；本文件由构建生成）\n"
+        "# Windows 离线启动入口（本文件由构建生成）\n"
         "$root = Split-Path -Parent $MyInvocation.MyCommand.Path\n"
         '& (Join-Path $root "bin\\zed.exe") --user-data-dir (Join-Path $root "data") @args\n'
     )
@@ -122,10 +123,9 @@ def _assert_products(
     for eid in (cfg.get("extensions") or {}).get("ids") or []:
         if eid in skipped:
             continue
-        check(
-            dist_dir / "data" / "extensions" / "installed" / eid / "extension.wasm",
-            f"扩展 {eid}",
-        )
+        installed_dir = dist_dir / "data" / "extensions" / "installed" / eid
+        if not is_valid_extension_artifact(installed_dir):
+            missing.append(f"扩展 {eid}: 产物缺失（extension.toml + 至少一个 *.wasm）：{installed_dir}")
 
     if missing:
         raise AssertionError("产物断言失败，缺失：\n  " + "\n  ".join(missing))
@@ -247,9 +247,16 @@ def finalize(
 
     # 1) settings.json（telemetry/auto_update 默认 + cfg.settings deep merge）
     _write_settings(cfg, dist_dir)
-    # 2) 启动脚本（双平台都生成，按平台使用）
-    _write_run_sh(dist_dir)
-    _write_run_ps1(dist_dir)
+    # 2) 启动脚本（只生成当前平台对应的：linux→run.sh，windows→run.ps1）
+    #    并清理另一平台残留，防止增量重跑把上一平台的脚本带进产物
+    if platform.startswith("linux"):
+        _write_run_sh(dist_dir)
+        (dist_dir / "run.ps1").unlink(missing_ok=True)
+    elif platform.startswith("windows"):
+        _write_run_ps1(dist_dir)
+        (dist_dir / "run.sh").unlink(missing_ok=True)
+    else:
+        raise ValueError(f"未知平台：{platform}")
     # 3) 产物断言（缺失 → AssertionError，与 P4/P5 告警语义区分）
     _assert_products(cfg, platform, dist_dir, np, failed_gh, failed_npm, skipped_exts)
     # 4) BUILD_INFO

@@ -221,6 +221,7 @@ class AssertProductsTests(unittest.TestCase):
         for eid in ("foo-ext", "bar-ext"):
             d = self._tmp / "data" / "extensions" / "installed" / eid
             d.mkdir()
+            (d / "extension.toml").touch()
             (d / "extension.wasm").touch()
 
     def test_missing_raises_with_all_items(self):
@@ -257,6 +258,7 @@ class AssertProductsTests(unittest.TestCase):
         yaml_bin.touch()
         bar = self._tmp / "data" / "extensions" / "installed" / "bar-ext"
         bar.mkdir()
+        (bar / "extension.toml").touch()
         (bar / "extension.wasm").touch()
         _assert_products(
             self.cfg, "linux-x64", self._tmp, self.np,
@@ -299,8 +301,15 @@ class FinalizeFlowTests(unittest.TestCase):
         settings = json.loads((self.dist / "data" / "config" / "settings.json").read_text())
         self.assertEqual(settings, BASE_SETTINGS)
         self.assertTrue((self.dist / "run.sh").is_file())
-        self.assertTrue((self.dist / "run.ps1").is_file())
+        self.assertFalse((self.dist / "run.ps1").exists(), "linux 平台不应生成 run.ps1")
         self.assertTrue((self.dist / "BUILD_INFO").is_file())
+
+    def test_stale_other_platform_script_removed(self):
+        """增量重跑：上一平台残留脚本被清理（linux 流程清 run.ps1）。"""
+        self.dist.mkdir(parents=True, exist_ok=True)
+        (self.dist / "run.ps1").write_text("stale")
+        finalize_mod.finalize({}, "linux-x64", self.dist, self.tc, self.np, [], [], [], [])
+        self.assertFalse((self.dist / "run.ps1").exists(), "残留 run.ps1 应被删除")
 
     def test_run_sh_content_and_exec_bit(self):
         """run.sh：可执行位 + exec 指向 bin/zed 且 --user-data-dir 指向 data/。"""
@@ -313,13 +322,19 @@ class FinalizeFlowTests(unittest.TestCase):
         self.assertIn('"$@"', content)
 
     def test_run_ps1_content(self):
-        """run.ps1：Split-Path 根 + bin\\zed.exe + @args。"""
-        finalize_mod.finalize({}, "linux-x64", self.dist, self.tc, self.np, [], [], [], [])
+        """run.ps1（windows 平台）：Split-Path 根 + bin\\zed.exe + @args；不生成 run.sh。"""
+        finalize_mod.finalize({}, "windows-x64", self.dist, self.tc, self.np, [], [], [], [])
         content = (self.dist / "run.ps1").read_text()
         self.assertIn("Split-Path -Parent $MyInvocation.MyCommand.Path", content)
         self.assertIn('bin\\zed.exe', content)
         self.assertIn("--user-data-dir", content)
         self.assertIn("@args", content)
+        self.assertFalse((self.dist / "run.sh").exists(), "windows 平台不应生成 run.sh")
+
+    def test_unknown_platform_raises(self):
+        """未知平台 → ValueError。"""
+        with self.assertRaises(ValueError):
+            finalize_mod.finalize({}, "macos-x64", self.dist, self.tc, self.np, [], [], [], [])
 
     def test_settings_and_build_info_override(self):
         """cfg.settings 覆盖 + config_files/warnings 进 BUILD_INFO。"""
