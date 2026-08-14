@@ -255,6 +255,7 @@ jobs:
         run: |
           gh release create "$GITHUB_REF_NAME" zed-portable-*.tar.zst zed-portable-*.7z \
             --title "zed-portable ${GITHUB_REF_NAME#bundle-}" \
-            --notes "离线 bundle，对应 Zed ${{ github.ref_name }}（详见产物内 BUILD_INFO）"
+            --notes "离线 bundle，对应 Zed ${GITHUB_REF_NAME#bundle-}（详见产物内 BUILD_INFO）
+          原版发布：https://github.com/zed-industries/zed/releases/tag/${GITHUB_REF_NAME#bundle-}"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
