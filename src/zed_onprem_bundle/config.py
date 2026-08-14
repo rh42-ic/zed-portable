@@ -1,10 +1,12 @@
 """配置合并（§4.2 规则 1-7）：只扫 config/enabled/*.toml → deep merge → 校验 → env 覆盖。
 
 产物结构约定（下游模块消费）：
-- 顶层键：zed / node / debug / extensions / lsp / settings
+- 顶层键：zed / node / debug / extensions / lsp / settings（remote_server 可选——
+  仅链接 config/available/remote.toml 或 env REMOTE_SERVER_PLATFORMS 时才出现）
 - lsp.github / lsp.npm 各为 {server_name: bool}
 - settings 为任意嵌套 dict（最终并入 settings.json）
 - extensions: rev(str), ids(list[str])；node: version(str)；debug: debugpy(bool)
+- remote_server(可选): platforms(list[str]) / source(str)；未配置时键不存在
 - 返回 dict 含 "_sources"（顶层键 ← 来源文件列表）
 """
 
@@ -23,18 +25,30 @@ except ImportError:  # Python < 3.11
 
 log = logging.getLogger("zed_onprem_bundle.config")
 
-#: 兜底默认（enabled 为空或目录不存在时——不装任何扩展/LSP/node）
+#: 支持的远程服务端平台（schema 持有者；remote_server.py 从此 import）
+SUPPORTED_PLATFORMS = [
+    "linux-x86_64",
+    "linux-aarch64",
+    "macos-x86_64",
+    "macos-aarch64",
+    "windows-x86_64",
+    "windows-aarch64",
+]
+
+#: 兜底默认（enabled 为空或目录不存在时——不装任何扩展/LSP/node；
+#: remote_server 不在默认中：不链接 config/available/remote.toml = 不下载远程服务端）
 DEFAULT_CONFIG: dict = {
     "zed": {"channel": "stable", "release_tag": "", "binary": "download"},
 }
 
 #: 已知顶层键（§4.3 schema）
-KNOWN_TOP_KEYS = {"zed", "node", "debug", "extensions", "lsp", "settings"}
+KNOWN_TOP_KEYS = {"zed", "node", "debug", "extensions", "lsp", "settings", "remote_server"}
 
 #: env 覆盖映射：env 变量 → (顶层键, 子键)；ZED_BUNDLE_PLATFORM 由 cli 处理
 _ENV_OVERRIDES = [
     ("ZED_RELEASE_TAG", ("zed", "release_tag")),
     ("EXTENSIONS_REV", ("extensions", "rev")),
+    ("REMOTE_SERVER_PLATFORMS", ("remote_server", "platforms")),
 ]
 
 
@@ -166,6 +180,28 @@ def _validate(merged: dict) -> None:
                 log.warning("lsp.%s.%s = %r 非 bool，忽略", group, name, flag)
                 del table[name]
 
+    # remote_server：仅当配置了该表（链接 remote.toml / 自写增量 / env 独立启用）才
+    # 校验——未配置时**不创建键、不下载**（不链接 = 不带远程服务端）；
+    # 有键时 platforms 必须为 str 列表且全部 ∈ SUPPORTED_PLATFORMS；
+    # source 当前仅支持 github（硬校验，非法 → ValueError）
+    rs = merged.get("remote_server")
+    if rs is not None:
+        if not isinstance(rs, dict):
+            raise ValueError("remote_server 必须为 table")
+        platforms = rs.get("platforms", [])
+        if not isinstance(platforms, list) or not all(isinstance(p, str) for p in platforms):
+            raise ValueError("remote_server.platforms 必须为字符串列表")
+        for p in platforms:
+            if p not in SUPPORTED_PLATFORMS:
+                raise ValueError(f"remote_server.platforms 含不支持的平台: {p}")
+        if rs.get("source", "github") != "github":
+            raise ValueError(
+                f"remote_server.source 当前仅支持 github，收到: {rs.get('source')!r}"
+            )
+        # 显式启用（表存在）→ 补齐缺省（platforms 缺省 = 全 6 平台）
+        rs.setdefault("source", "github")
+        rs.setdefault("platforms", list(SUPPORTED_PLATFORMS))
+
     # 结构规范化（合并后的完整形态）：下游模块可无 .get 兜底直接访问
     ext.setdefault("rev", "")
     ext.setdefault("ids", [])
@@ -174,14 +210,29 @@ def _validate(merged: dict) -> None:
 
 
 def _apply_env_overrides(merged: dict, env: Mapping) -> None:
-    """env 覆盖（最高优先级，最后应用）；仅当 env 值非空才覆盖。"""
+    """env 覆盖（最高优先级，最后应用）；仅当 env 值非空才覆盖。
+
+    list 子键（如 remote_server.platforms）：env 值按逗号分隔 split +
+    strip，空段剔除后整体赋值（完全替换，非追加）。即使顶层键缺失
+    （未链接 remote.toml）也按列表语义创建——env REMOTE_SERVER_PLATFORMS
+    可独立启用 remote_server。
+    """
     for var, (top, sub) in _ENV_OVERRIDES:
         value = env.get(var)
         if not value:
             continue
         if not isinstance(merged.get(top), dict):
             merged[top] = {}
-        merged[top][sub] = value
+        if sub in _LIST_ENV_SUBKEYS:
+            merged[top][sub] = [
+                part.strip() for part in value.split(",") if part.strip()
+            ]
+        else:
+            merged[top][sub] = value
+
+
+#: env 中按逗号分隔赋值（列表）的子键集合
+_LIST_ENV_SUBKEYS = {"platforms"}
 
 
 def _log_sources(merged: dict, sources: dict[str, list[str]]) -> None:

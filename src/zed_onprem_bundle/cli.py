@@ -113,6 +113,12 @@ def cmd_build(args: argparse.Namespace) -> int:
     )
     if not ok:
         return 1
+    ok, _ = _run_stage(
+        "P2.5 远程服务端", "remote_server", "ensure_remote_servers",
+        cfg, tc.zed_tag, dist_dir / "data",
+    )
+    if not ok:
+        return 1
     ok, np = _run_stage(
         "P3 Node", "node", "ensure_node", cfg, platform, dist_dir,
     )

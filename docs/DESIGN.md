@@ -221,7 +221,7 @@ ln -s ../available/icons.toml        # 美化：图标
 ## 5. 构建流水线
 
 > 全程联网；每步幂等（产物存在则跳过）；本地与 CI 同一命令：`zed-onprem-bundle build`（`uv sync` 后）。
-> 阶段编号与 `src/` 模块一一对应（cli.py 按序调用：config 合并 → P1..P6，单阶段失败 → 非零退出，可修复后重跑）。
+> 阶段编号与 `src/` 模块一一对应（cli.py 按序调用：config 合并 → P1 → P2 → P2.5 → P3..P6，单阶段失败 → 非零退出，可修复后重跑）。
 
 ### P0 环境检查
 - **本机**：uv（uv python install 3.12）、node/npm、git；env：`ZED_REPO`（默认 `/home/dev/rust-dev/zed`）、`EXTENSIONS_REPO`（默认 `/home/dev/rust-dev/extensions`）、`ZED_RELEASE_TAG`/`EXTENSIONS_REV`（版本控制，优先级见 §4.2）；`uv sync`（首次；此后 `uv run zed-onprem-bundle ...`）
@@ -259,6 +259,19 @@ ln -s ../available/icons.toml        # 美化：图标
 - **空清单语义**：合并后 `ids` 缺省/空数组 = 不装任何扩展（**不链接 = 什么都不要**）；preset 文件不写 `[extensions]` 即不装扩展
 - **不在清单内的扩展不得写入** installed/（运行时 check_for_updates 只对已装扩展有效，不会删除）。
 - 下载/打包失败（网络/404/编译错）→ 打印警告跳过该扩展（主路径失败先试兜底），不阻断整体。
+
+### P2.5 远程服务端（src/remote_server.py）
+
+**机制**：Zed 远程开发时客户端把 zed-remote-server 部署到远程机器，远程平台由**远程探测**决定（与客户端平台无关）。客户端本地缓存路径 `{data_dir}/remote_servers/{channel}/{os}-{arch}/{version}.gz`（crates/auto_update/src/auto_update.rs:591-594），只做 metadata 存在性检查即跳过下载（auto_update.rs:599）——因此本阶段**原样改名落位（零转换）**，任意平台远程（含离线）连接时客户端零下载直接部署。server 版本 = 客户端版本（= zed tag）。
+
+| 项 | 说明 |
+|---|---|
+| 来源 | `zed-industries/zed` release 资产 `zed-remote-server-{os}-{arch}.{gz\|zip}`（windows=zip，linux/macos=gzip） |
+| 落位 | `dist/data/remote_servers/{channel}/{os}-{arch}/{version}.gz`（channel 取 `[zed] channel`，version 取 zed tag 去 `v` 前缀——与 zed 本体对齐） |
+| 配置 | **链接 `config/available/remote.toml` 才启用**（独立 preset，不跟随 core-zed；不链接 = 不下载）；`[remote_server] platforms` 可裁剪（缺省全 6）+ `source`（当前仅 github）；env `REMOTE_SERVER_PLATFORMS` 可独立启用（逗号分隔整体覆盖） |
+| 跳过 | 未配置 `remote_server`（未链接 remote.toml）→ 跳过；`zed.binary` 为本地路径（zed_tag=local）→ 版本未知，告警跳过 |
+| 失败语义 | 下载失败/魔数不符 → raise（远程服务端是 zed 核心功能，硬失败，区别于 P4/P5 的告警跳过） |
+| 幂等 | dest 存在且魔数正确（windows=PK/zip，其余=1f8b/gzip）→ 跳过 |
 
 ### P3 Node（src/node.py）
 | 平台 | 资产 | 解压后根 |

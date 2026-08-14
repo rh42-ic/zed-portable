@@ -66,12 +66,14 @@ class ConfigMergeTest(unittest.TestCase):
 
     def test_empty_enabled_defaults_and_normalization(self):
         """空 enabled → 兜底默认 + 结构规范化回归（用户改动点）：
-        extensions.ids==[]、extensions.rev==""、lsp.github=={}、lsp.npm=={}。"""
+        extensions.ids==[]、extensions.rev==""、lsp.github=={}、lsp.npm=={}；
+        remote_server 不在默认中（不链接 remote.toml = 不下载远程服务端）。"""
         cfg_dir = self.make_config_dir({})
         cfg = load_merged_config(cfg_dir)
         self.assertEqual(cfg["zed"], {"channel": "stable", "release_tag": "", "binary": "download"})
         self.assertEqual(cfg["extensions"], {"rev": "", "ids": []})
         self.assertEqual(cfg["lsp"], {"github": {}, "npm": {}})
+        self.assertNotIn("remote_server", cfg)
 
     def test_normalization_fills_missing_keys(self):
         """部分定义时补齐缺失键：仅给 ids → rev 补 ""；仅给 lsp.github → npm 补 {}。"""
@@ -149,6 +151,7 @@ class ConfigMergeTest(unittest.TestCase):
         self.assertEqual(cfg["zed"]["channel"], "stable")
         self.assertEqual(cfg["extensions"], {"rev": "", "ids": []})
         self.assertEqual(cfg["lsp"], {"github": {}, "npm": {}})
+        self.assertNotIn("remote_server", cfg)
 
     def test_symlinked_toml_loaded(self):
         """enabled 下软链接 toml 直接读内容生效（无需解析链接本身）。"""
@@ -164,9 +167,51 @@ class ConfigMergeTest(unittest.TestCase):
             self.assertIn("link.toml", cfg["_sources"]["zed"])
 
     def test_defaults_module_constant(self):
-        """DEFAULT_CONFIG 常量结构与契约一致。"""
-        self.assertEqual(cfgmod.DEFAULT_CONFIG,
-                         {"zed": {"channel": "stable", "release_tag": "", "binary": "download"}})
+        """DEFAULT_CONFIG 常量结构与契约一致（remote_server 不在默认中——
+        不链接 = 不下载远程服务端）。"""
+        self.assertEqual(
+            cfgmod.DEFAULT_CONFIG,
+            {
+                "zed": {"channel": "stable", "release_tag": "", "binary": "download"},
+            },
+        )
+
+    def test_remote_server_from_remote_preset(self):
+        """链接 config/available/remote.toml → remote_server 启用：
+        platforms 全 6、source github（独立 preset，不跟随 core-zed）。"""
+        preset_path = Path(__file__).resolve().parents[1] / "config" / "available" / "remote.toml"
+        preset = preset_path.read_text(encoding="utf-8")
+        cfg_dir = self.make_config_dir({"remote.toml": preset})
+        cfg = load_merged_config(cfg_dir)
+        self.assertEqual(cfg["remote_server"]["platforms"], list(cfgmod.SUPPORTED_PLATFORMS))
+        self.assertEqual(cfg["remote_server"]["source"], "github")
+
+    def test_remote_server_invalid_platform_raises(self):
+        """校验：remote_server.platforms 含 SUPPORTED_PLATFORMS 外平台 → ValueError。"""
+        cfg_dir = self.make_config_dir({
+            "10-a.toml": '[remote_server]\nplatforms = ["linux-ppc64"]\n',
+        })
+        with self.assertRaises(ValueError) as ctx:
+            load_merged_config(cfg_dir)
+        self.assertIn("linux-ppc64", str(ctx.exception))
+
+    def test_remote_server_non_github_source_raises(self):
+        """校验：remote_server.source 非 github → ValueError（当前仅支持 github）。"""
+        cfg_dir = self.make_config_dir({
+            "10-a.toml": '[remote_server]\nsource = "gitlab"\n',
+        })
+        with self.assertRaises(ValueError) as ctx:
+            load_merged_config(cfg_dir)
+        self.assertIn("github", str(ctx.exception))
+
+    def test_remote_server_platforms_env_override(self):
+        """env REMOTE_SERVER_PLATFORMS（逗号分隔）→ 独立创建 remote_server 键并
+        整体替换 platforms 为 2 个（strip 生效）——env 可独立启用，无需链接 preset。"""
+        cfg_dir = self.make_config_dir({})
+        cfg = load_merged_config(cfg_dir, env={
+            "REMOTE_SERVER_PLATFORMS": "linux-x86_64, windows-x86_64",
+        })
+        self.assertEqual(cfg["remote_server"]["platforms"], ["linux-x86_64", "windows-x86_64"])
 
 
 if __name__ == "__main__":

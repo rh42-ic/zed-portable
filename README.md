@@ -8,6 +8,7 @@
 - 单一入口命令 `zed-onprem-bundle build`，本地与 CI 一致
 - 扩展/LSP/主题由 **preset 配置文件驱动**：available/ 是候选库，`ln -s` 到 enabled/ 才生效；不链接 = 什么都不装
 - 目标平台：**linux x86_64 + windows x86_64**（双平台在 CI 构建，本机仅构建/验证 linux）
+- 远程服务端（P2.5）：**独立 preset `config/available/remote.toml`**，链接才启用（不链接 = bundle 不带远程服务端）；启用后预置全 6 平台 `zed-remote-server`（linux/macos/windows × x86_64/aarch64）到 `data/remote_servers/`，任意平台远程（含离线）连接零下载部署；`[remote_server] platforms` 可裁剪（env `REMOTE_SERVER_PLATFORMS` 可独立启用）
 
 ## 快速开始
 
@@ -47,6 +48,7 @@ uv run zed-onprem-bundle build
 | 文件名 | 分类 | 内容概要 |
 |---|---|---|
 | `core-zed.toml` | 核心 | Zed 本体：channel=stable、release_tag 空（解析最新 stable）、binary=download |
+| `remote.toml` | 核心 | 远程开发服务端（zed-remote-server）：链接才启用，预置全 6 平台（platforms 可裁剪）、source=github |
 | `core-node.toml` | 核心 | Node v24.11.0 运行时（与 Zed 源码 node_runtime.rs:606 同步，勿改）+ debugpy |
 | `core-settings.toml` | 核心 | settings.json 默认体验片段：One Dark / tab_size=4 / autosave=on_focus_change（可覆盖） |
 | `web.toml` | 领域 | web 开发：vue/svelte/astro/angular/graphql/prisma/tsgo/css-modules-kit + npm 型 LSP 全套（typescript/vtsls/yaml/css/bash/tailwind/pyright/eslint） |

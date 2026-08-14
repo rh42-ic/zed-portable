@@ -4,3 +4,5 @@
 channel = "stable"            # stable | preview | dev
 release_tag = ""              # 空=解析 channel 最新 stable；env ZED_RELEASE_TAG 覆盖（构建时可控）
 binary = "download"           # download=官方 release；或 /path/to/local/zed 复用本地构建
+
+# 远程开发服务端（多平台）：见 config/available/remote.toml（链接才启用）
