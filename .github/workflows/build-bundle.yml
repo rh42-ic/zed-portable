@@ -240,13 +240,15 @@ jobs:
       - name: Package
         shell: bash
         run: |
-          tar -C bundle-dist-linux -czf zed-portable-${GITHUB_REF_NAME#bundle-}-linux-x64.tar.gz .
-          (cd bundle-dist-windows && zip -r ../zed-portable-${GITHUB_REF_NAME#bundle-}-windows-x64.zip .)
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq zstd p7zip-full
+          tar -C bundle-dist-linux -I 'zstd -T0 --long=27 -9' -cf zed-portable-${GITHUB_REF_NAME#bundle-}-linux-x64.tar.zst .
+          (cd bundle-dist-windows && 7z a -t7z -mx=9 ../zed-portable-${GITHUB_REF_NAME#bundle-}-windows-x64.7z .)
           ls -lh zed-portable-*
 
       - name: Create GitHub release
         run: |
-          gh release create "$GITHUB_REF_NAME" zed-portable-*.tar.gz zed-portable-*.zip \
+          gh release create "$GITHUB_REF_NAME" zed-portable-*.tar.zst zed-portable-*.7z \
             --title "zed-portable ${GITHUB_REF_NAME#bundle-}" \
             --notes "离线 bundle，对应 Zed ${{ github.ref_name }}（详见产物内 BUILD_INFO）"
         env:
