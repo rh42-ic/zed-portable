@@ -26,7 +26,7 @@ NPM_SERVERS: dict[str, tuple[str, str, list[str]]] = {
     "vtsls": (
         "vtsls",
         "node_modules/@vtsls/language-server/bin/vtsls.js",
-        ["vtsls@latest"],
+        ["@vtsls/language-server@latest"],
     ),
     "yaml": (
         "yaml-language-server",

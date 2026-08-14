@@ -201,16 +201,33 @@ def _install_from_api(
     if tmp.exists():
         shutil.rmtree(tmp)
     dl.extract_archive(archive, tmp)
-    if not ((tmp / "extension.toml").is_file() and (tmp / "extension.wasm").is_file()):
+    if not is_valid_extension_artifact(tmp):
         if installed_dir.exists():
             shutil.rmtree(installed_dir, ignore_errors=True)  # 防坏扩展
-        print(f"  WARN: 官方产物缺 extension.toml/extension.wasm：{eid}（上游异常，跳过）")
+        print(f"  WARN: 官方产物缺 extension.toml / *.wasm：{eid}（上游异常，跳过）")
         return False
     if installed_dir.exists():
         shutil.rmtree(installed_dir)
     shutil.copytree(tmp, installed_dir)
     print(f"  已安装 v{version}：{installed_dir}")
     return True
+
+
+def is_valid_extension_artifact(ext_dir: Path) -> bool:
+    """校验扩展产物：extension.toml 必需，wasm 至少一个（§5 P2 的 OR 语义）。
+
+    带扩展逻辑的扩展（vue/verilog 等）根级有 extension.wasm；纯语法扩展
+    （tcl/p4/systemrdl 等）官方产物只有 grammars/*.wasm——二者均合法。
+    P2 安装校验与 P6 finalize 断言共用本函数，避免规则漂移。
+    """
+    if not (ext_dir / "extension.toml").is_file():
+        return False
+    if (ext_dir / "extension.wasm").is_file():
+        return True
+    grammars = ext_dir / "grammars"
+    if grammars.is_dir():
+        return any(p.suffix == ".wasm" for p in grammars.iterdir())
+    return False
 
 
 # ---------------------------------------------------------------------------
