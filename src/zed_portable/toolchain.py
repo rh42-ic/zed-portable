@@ -42,7 +42,9 @@ ZED_EXTENSION_CLI_PLATFORM = {
     "windows-x64": "x86_64-pc-windows-msvc/zed-extension.exe",
 }
 
-#: zed 官方 release 资产名候选（linux 为 tar 包，release.yml:453-454；windows 为单文件 exe，release.yml:723-724）
+#: zed 官方 release 资产名候选（linux 为 tar 包，release.yml:453-454；windows 为
+#: Inno Setup 安装器 Zed-x86_64.exe——GUI 向导，非便携可执行文件，下载后须静默
+#: 安装提取，见 _run_zed_installer / _collect_windows_install；release.yml:723-724）
 ZED_ASSET_CANDIDATES = {
     "linux-x64": ["zed-linux-x86_64.tar.gz"],
     "windows-x64": ["Zed-x86_64.exe"],
@@ -279,12 +281,19 @@ def _extension_cli_sha(headers: dict) -> str:
 # zed 二进制
 # ---------------------------------------------------------------------------
 def _download_zed(tag: str, plat: str, build_dir: Path, dist_dir: Path) -> None:
-    """按平台下载 zed 官方 release 资产并落位 dist/bin/zed(.exe)，随后校验。
+    """按平台获取 zed 官方 release 资产并落位 dist/bin/zed(.exe)，随后校验。
 
     linux tar（release.yml:453-454）解压后是 zed.app/ 应用包：bin/zed 是启动器，
     真实编辑器在 libexec/zed-editor，lib/ 内置运行时 .so，share/ 为桌面集成。
     复制必须保持相对布局（启动器按 `../libexec/zed-editor` 定位 bundle）：
     bin/ → dist/bin、libexec/ → dist/libexec、lib/ → dist/lib、share/ → dist/share。
+
+    windows 官方无便携 zip，唯一发布资产是 Inno Setup 安装器（Zed-x86_64.exe，
+    GUI 向导，release.yml:723-724）——直接下载为 exe 运行 `--version` 会挂起超时。
+    须静默安装（/VERYSILENT /DIR=）到 build 目录后按 zed.iss [Files] 布局提取：
+    Zed.exe（GUI，windows_subsystem）→ dist 根、bin/zed.exe（cli，console 程序，
+    校验用它）→ dist/bin。cli 通过 `../Zed.exe` 相对定位 GUI 编辑器
+    （crates/cli/src/main.rs possible_locations），故 dist 内相对布局必须保持。
     """
     dl = _download()
     is_windows = plat.startswith("windows")
@@ -293,8 +302,11 @@ def _download_zed(tag: str, plat: str, build_dir: Path, dist_dir: Path) -> None:
     bin_dir = dist_dir / "bin"
     bin_dir.mkdir(parents=True, exist_ok=True)
     if is_windows:
-        # 单文件 exe（release.yml:723-724）：直接落位 dist/bin/zed.exe
-        dl.download_file(url, bin_dir / "zed.exe")
+        installer = build_dir / "Zed-x86_64.exe"
+        dl.download_file(url, installer)
+        install_dir = build_dir / "zed-windows-install"
+        _run_zed_installer(installer, install_dir)
+        _collect_windows_install(install_dir, dist_dir)
     else:
         archive = build_dir / "zed-linux-x86_64.tar.gz"
         dl.download_file(url, archive)
@@ -311,6 +323,72 @@ def _download_zed(tag: str, plat: str, build_dir: Path, dist_dir: Path) -> None:
                 shutil.copytree(src, dist_dir / sub, dirs_exist_ok=True)
     # 下载后校验：存在 + 可执行 + --version 退出码 0（失败 raise）
     _verify_zed(bin_dir / ("zed.exe" if is_windows else "zed"))
+
+
+def _run_zed_installer(installer: Path, install_dir: Path) -> None:
+    """静默运行 Inno Setup 安装器（Zed-x86_64.exe）到 install_dir（用户级，无 UAC）。
+
+    参数与 scoop 社区验证一致：/VERYSILENT（无 UI 向导）、/SUPPRESSMSGBOXES、
+    /NORESTART、/DIR= 覆盖默认安装目录（{autopf}\\Zed）、空 /TASKS= 禁用
+    addtopath/associatewithfiles 等注册表任务（[Run] 启动 GUI 段有 WizardNotSilent
+    守卫，静默模式不执行）。列表直传 subprocess（无 shell），`/TASKS=` 作为单个
+    字符串元素，不受 shell 空串语义影响。
+    """
+    install_dir = Path(install_dir)
+    args = [
+        str(installer),
+        "/VERYSILENT",
+        "/SUPPRESSMSGBOXES",
+        "/NORESTART",
+        f"/DIR={install_dir}",
+        "/TASKS=",
+    ]
+    try:
+        proc = subprocess.run(args, capture_output=True, text=True, timeout=600)
+    except subprocess.TimeoutExpired:
+        raise RuntimeError(f"Zed 安装器超时（600s）：{installer}")
+    if proc.returncode != 0:
+        raise RuntimeError(
+            f"Zed 安装器退出码 {proc.returncode}（stdout={proc.stdout.strip()!r} "
+            f"stderr={proc.stderr.strip()!r}）：{installer}"
+        )
+
+
+def _collect_windows_install(install_dir: Path, dist_dir: Path) -> None:
+    """把静默安装产物按 bundle 布局复制到 dist。
+
+    布局约束（crates/zed/resources/windows/zed.iss [Files] 段）：
+    - Zed.exe → dist/Zed.exe（GUI 编辑器，必需，缺失 raise）
+    - bin/zed.exe（cli 改名）→ dist/bin/zed.exe（缺失时交给 _verify_zed 报错）
+    - conpty.dll → dist/；amd_ags_x64.dll → dist/（aarch64 安装器无此文件，容错）
+    - x64/OpenConsole.exe → dist/x64/；arm64/OpenConsole.exe → dist/arm64/
+
+    cli 通过 `../Zed.exe` 定位 GUI 编辑器（crates/cli/src/main.rs possible_locations），
+    故 dist/bin/zed.exe 必须与 dist/Zed.exe 保持相对布局。
+    """
+    install_dir = Path(install_dir)
+    dist_dir = Path(dist_dir)
+    dist_dir.mkdir(parents=True, exist_ok=True)
+    gui = install_dir / "Zed.exe"
+    if not gui.is_file():
+        raise RuntimeError(f"安装目录缺少 GUI 编辑器 Zed.exe：{install_dir}")
+    shutil.copy2(gui, dist_dir / "Zed.exe")
+    _copy_windows_file(install_dir / "bin" / "zed.exe", dist_dir / "bin" / "zed.exe")
+    _copy_windows_file(install_dir / "conpty.dll", dist_dir / "conpty.dll")
+    _copy_windows_file(install_dir / "amd_ags_x64.dll", dist_dir / "amd_ags_x64.dll")
+    _copy_windows_file(
+        install_dir / "x64" / "OpenConsole.exe", dist_dir / "x64" / "OpenConsole.exe"
+    )
+    _copy_windows_file(
+        install_dir / "arm64" / "OpenConsole.exe", dist_dir / "arm64" / "OpenConsole.exe"
+    )
+
+
+def _copy_windows_file(src: Path, dst: Path) -> None:
+    """源存在时复制（aarch64/x64 差异文件容错）；目标父目录自动创建。"""
+    if src.is_file():
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, dst)
 
 
 def _find_zed_app(extract_dir: Path) -> Path:

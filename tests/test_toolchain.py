@@ -4,6 +4,9 @@
 - ensure_zed_binary：本地路径分支（不触发 WASI/CLI 下载，返回字段为 None）；
   download 分支幂等跳过（已存在且校验通过 → 不重下、不重新解析 tag）；
   download 分支解析 + 下载调用。
+- WindowsInstallerTests：_run_zed_installer 静默参数与失败 raise、
+  _collect_windows_install 布局复制（含缺失容错）、windows 下载分支端到端
+  （安装器下载 → 静默安装 mock → 布局收集 → cli 版校验）。
 - ensure_wasi_sdk / ensure_zed_extension_cli：幂等（已存在直接返回，零下载）；
   ensure_zed_extension_cli 下载路径（预编译 URL 模板含 commit sha）。
 
@@ -86,6 +89,130 @@ class EnsureZedBinaryTests(unittest.TestCase):
         tc = toolchain_mod.ensure_zed_binary(cfg, "windows-x64", self.build, self.dist)
         self.assertTrue(tc.zed_bin.name == "zed.exe")
         self.assertTrue(tc.zed_bin.is_file())
+
+
+class WindowsInstallerTests(unittest.TestCase):
+    """windows 安装器路径：_run_zed_installer 静默参数 / _collect_windows_install 布局 /
+    下载分支端到端（linux 上不能真执行 windows exe，安装与校验均 mock）。"""
+
+    def setUp(self):
+        self._tmp = Path(tempfile.mkdtemp(prefix="tc_win_"))
+        self.addCleanup(shutil.rmtree, self._tmp, ignore_errors=True)
+        self.build = self._tmp / "build"
+        self.dist = self._tmp / "dist"
+
+    def _make_install_layout(self, install: Path, *, with_amd_ags=True, with_arm64=True) -> None:
+        """按 zed.iss [Files] 布局造安装产物。"""
+        install = Path(install)
+        (install / "bin").mkdir(parents=True, exist_ok=True)
+        (install / "Zed.exe").write_bytes(b"GUI")
+        (install / "bin" / "zed.exe").write_bytes(b"CLI")
+        (install / "conpty.dll").write_bytes(b"c")
+        if with_amd_ags:
+            (install / "amd_ags_x64.dll").write_bytes(b"a")
+        (install / "x64").mkdir(parents=True, exist_ok=True)
+        (install / "x64" / "OpenConsole.exe").write_bytes(b"o")
+        if with_arm64:
+            (install / "arm64").mkdir(parents=True, exist_ok=True)
+            (install / "arm64" / "OpenConsole.exe").write_bytes(b"o64")
+
+    def test_run_zed_installer_silent_args(self):
+        """安装器以静默参数运行（/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR= /TASKS=，timeout 600）。"""
+        installer = self._tmp / "Zed-x86_64.exe"
+        install_dir = self._tmp / "install"
+        proc = mock.Mock(returncode=0, stdout="", stderr="")
+        with mock.patch.object(toolchain_mod.subprocess, "run", return_value=proc) as run:
+            toolchain_mod._run_zed_installer(installer, install_dir)
+        run.assert_called_once_with(
+            [
+                str(installer),
+                "/VERYSILENT",
+                "/SUPPRESSMSGBOXES",
+                "/NORESTART",
+                f"/DIR={install_dir}",
+                "/TASKS=",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=600,
+        )
+
+    def test_run_zed_installer_nonzero_exit_raises(self):
+        """安装器非零退出码 → RuntimeError（含退出码与 stdout/stderr 摘要）。"""
+        installer = self._tmp / "Zed-x86_64.exe"
+        proc = mock.Mock(returncode=5, stdout="boom", stderr="err")
+        with mock.patch.object(toolchain_mod.subprocess, "run", return_value=proc):
+            with self.assertRaises(RuntimeError) as ctx:
+                toolchain_mod._run_zed_installer(installer, self._tmp / "install")
+        msg = str(ctx.exception)
+        self.assertIn("5", msg)
+        self.assertIn("boom", msg)
+        self.assertIn("err", msg)
+
+    def test_collect_windows_install_layout(self):
+        """安装产物按布局复制：Zed.exe→dist 根、bin/zed.exe→dist/bin、conpty/amd_ags→根、
+        x64/arm64 OpenConsole→对应子目录。"""
+        install = self._tmp / "install"
+        self._make_install_layout(install)
+        toolchain_mod._collect_windows_install(install, self.dist)
+        expected = (
+            "Zed.exe",
+            "bin/zed.exe",
+            "conpty.dll",
+            "amd_ags_x64.dll",
+            "x64/OpenConsole.exe",
+            "arm64/OpenConsole.exe",
+        )
+        for rel in expected:
+            self.assertTrue((self.dist / rel).is_file(), f"缺少 dist/{rel}")
+
+    def test_collect_windows_install_missing_zed_raises(self):
+        """安装目录缺 Zed.exe → RuntimeError。"""
+        install = self._tmp / "install"
+        install.mkdir(parents=True)
+        with self.assertRaises(RuntimeError) as ctx:
+            toolchain_mod._collect_windows_install(install, self.dist)
+        self.assertIn("Zed.exe", str(ctx.exception))
+
+    def test_collect_windows_install_tolerates_missing_optional(self):
+        """aarch64 容错：amd_ags_x64.dll / arm64 OpenConsole 缺失不报错。"""
+        install = self._tmp / "install"
+        self._make_install_layout(install, with_amd_ags=False, with_arm64=False)
+        toolchain_mod._collect_windows_install(install, self.dist)  # 不 raise
+        self.assertTrue((self.dist / "Zed.exe").is_file())
+        self.assertTrue((self.dist / "bin" / "zed.exe").is_file())
+        self.assertFalse((self.dist / "amd_ags_x64.dll").exists())
+        self.assertFalse((self.dist / "arm64").exists())
+
+    def test_windows_download_branch_end_to_end(self):
+        """windows 下载分支：下载安装器 → 静默安装（mock 造布局）→ 收集 → cli 版校验。"""
+        urls = []
+
+        def _fake_download(url, dest, **kw):
+            urls.append(url)
+            dest = Path(dest)
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_bytes(b"MZ")  # 假安装器
+
+        def _fake_install(installer, install_dir):
+            self._make_install_layout(install_dir)  # 模拟静默安装产物
+
+        with mock.patch.object(
+            download_mod, "github_asset_url", return_value="https://example.invalid/Zed-x86_64.exe"
+        ), mock.patch.object(download_mod, "download_file", side_effect=_fake_download), \
+                mock.patch.object(toolchain_mod, "_run_zed_installer", side_effect=_fake_install), \
+                mock.patch.object(toolchain_mod, "_verify_zed") as verify:
+            toolchain_mod._download_zed("v1.0.0", "windows-x64", self.build, self.dist)
+
+        # 安装器下载到 build 目录
+        self.assertTrue((self.build / "Zed-x86_64.exe").is_file())
+        # 布局：Zed.exe 在 dist 根、cli 在 dist/bin、差异文件容错
+        self.assertTrue((self.dist / "Zed.exe").is_file())
+        self.assertTrue((self.dist / "bin" / "zed.exe").is_file())
+        self.assertTrue((self.dist / "conpty.dll").is_file())
+        self.assertTrue((self.dist / "x64" / "OpenConsole.exe").is_file())
+        # 校验必须用 cli 版 bin/zed.exe（GUI Zed.exe 无 stdout）
+        verify.assert_called_once_with(self.dist / "bin" / "zed.exe")
 
 
 class EnsureWasiSdkTests(unittest.TestCase):
