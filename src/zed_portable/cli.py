@@ -1,4 +1,4 @@
-"""命令行入口：zed-onprem-bundle build（argparse）。
+"""命令行入口：zed-portable build（argparse）。
 
 流水线阶段（P1-P6）模块按序惰性 import 并调用——模块缺失/未就绪时不
 影响 --help / --version（并行 lane 的模块就绪后即可用）。
@@ -16,9 +16,9 @@ from pathlib import Path
 from . import __version__
 from .config import load_merged_config
 
-log = logging.getLogger("zed_onprem_bundle")
+log = logging.getLogger("zed_portable")
 
-#: 工程根（pyproject 所在目录）：src/zed_onprem_bundle/cli.py → parents[2]
+#: 工程根（pyproject 所在目录）：src/zed_portable/cli.py → parents[2]
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 DEFAULT_EXTENSIONS_REPO = "/home/dev/rust-dev/extensions"
@@ -26,7 +26,7 @@ DEFAULT_EXTENSIONS_REPO = "/home/dev/rust-dev/extensions"
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="zed-onprem-bundle",
+        prog="zed-portable",
         description="自包含离线 Zed 分发包构建器",
     )
     parser.add_argument("--version", action="store_true", help="显示版本号并退出")
@@ -73,7 +73,7 @@ def _run_stage(label: str, module: str, func: str, *args) -> tuple[bool, object]
     """
     log.info("== %s ==", label)
     try:
-        mod = importlib.import_module(f"zed_onprem_bundle.{module}")
+        mod = importlib.import_module(f"zed_portable.{module}")
         return True, getattr(mod, func)(*args)
     except Exception as exc:  # noqa: BLE001 —— 阶段失败统一拦截
         log.error("阶段失败: %s —— %s: %s", label, type(exc).__name__, exc)

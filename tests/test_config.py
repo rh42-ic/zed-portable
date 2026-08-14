@@ -10,10 +10,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from zed_onprem_bundle import config as cfgmod
-from zed_onprem_bundle.config import load_merged_config
+from zed_portable import config as cfgmod
+from zed_portable.config import load_merged_config
 
-LOGGER = "zed_onprem_bundle.config"
+LOGGER = "zed_portable.config"
 
 
 class ConfigMergeTest(unittest.TestCase):

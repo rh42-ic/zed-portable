@@ -19,7 +19,7 @@ from unittest import mock
 
 import requests
 
-from zed_onprem_bundle import download
+from zed_portable import download
 
 SHA256_HELLO = "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
 
@@ -66,7 +66,7 @@ class DownloadFileTest(unittest.TestCase):
         """正常下载：内容落盘、返回 dest、无残留 .tmp。"""
         with tempfile.TemporaryDirectory() as td:
             dest = Path(td) / "a.bin"
-            with mock.patch("zed_onprem_bundle.download.requests.get",
+            with mock.patch("zed_portable.download.requests.get",
                             return_value=FakeResponse(content=b"data-123")):
                 ret = download.download_file("https://example.invalid/a.bin", dest)
             self.assertEqual(ret, dest)
@@ -83,7 +83,7 @@ class DownloadFileTest(unittest.TestCase):
                 calls["n"] += 1
                 return FakeResponse(content=b"data-123")
 
-            with mock.patch("zed_onprem_bundle.download.requests.get", side_effect=_get):
+            with mock.patch("zed_portable.download.requests.get", side_effect=_get):
                 download.download_file("https://example.invalid/a.bin", dest)
                 download.download_file("https://example.invalid/a.bin", dest)
             self.assertEqual(calls["n"], 1)  # 第二次未发请求
@@ -99,7 +99,7 @@ class DownloadFileTest(unittest.TestCase):
                 calls["n"] += 1
                 return FakeResponse(content=b"hello")
 
-            with mock.patch("zed_onprem_bundle.download.requests.get", side_effect=_get):
+            with mock.patch("zed_portable.download.requests.get", side_effect=_get):
                 download.download_file("https://e.invalid/a", dest, expected_sha256=SHA256_HELLO)
                 download.download_file("https://e.invalid/a", dest, expected_sha256=SHA256_HELLO)
             self.assertEqual(calls["n"], 1)
@@ -108,7 +108,7 @@ class DownloadFileTest(unittest.TestCase):
         """校验失败 → 立即 DownloadError（不重试，一次请求即止）。"""
         with tempfile.TemporaryDirectory() as td:
             dest = Path(td) / "a.bin"
-            with mock.patch("zed_onprem_bundle.download.requests.get",
+            with mock.patch("zed_portable.download.requests.get",
                             return_value=FakeResponse(content=b"hello")) as m:
                 with self.assertRaises(download.DownloadError):
                     download.download_file("https://e.invalid/a", dest,
@@ -124,8 +124,8 @@ class DownloadFileTest(unittest.TestCase):
             def _get(url, **kw):
                 raise requests.ConnectionError("network down")
 
-            with mock.patch("zed_onprem_bundle.download.requests.get", side_effect=_get) as m, \
-                 mock.patch("zed_onprem_bundle.download.time.sleep",
+            with mock.patch("zed_portable.download.requests.get", side_effect=_get) as m, \
+                 mock.patch("zed_portable.download.time.sleep",
                             side_effect=lambda s: sleeps.append(s)):
                 with self.assertRaises(download.DownloadError):
                     download.download_file("https://e.invalid/a", dest)
@@ -138,10 +138,10 @@ class DownloadFileTest(unittest.TestCase):
 class GetJsonTest(unittest.TestCase):
     def test_returns_json_dict(self):
         """get_json 返回解析后的 dict；非 2xx 抛 HTTPError。"""
-        with mock.patch("zed_onprem_bundle.download.requests.get",
+        with mock.patch("zed_portable.download.requests.get",
                         return_value=FakeResponse(json_data={"a": 1})):
             self.assertEqual(download.get_json("https://api.example.invalid/x"), {"a": 1})
-        with mock.patch("zed_onprem_bundle.download.requests.get",
+        with mock.patch("zed_portable.download.requests.get",
                         return_value=FakeResponse(status_code=404)):
             with self.assertRaises(requests.HTTPError):
                 download.get_json("https://api.example.invalid/x")
@@ -223,7 +223,7 @@ class GithubHeadersTest(unittest.TestCase):
 class GithubAssetUrlTest(unittest.TestCase):
     def test_head_hit_returns_url(self):
         """候选 HEAD 200 → 直接返回对应下载 URL（只请求一次）。"""
-        with mock.patch("zed_onprem_bundle.download.requests.head",
+        with mock.patch("zed_portable.download.requests.head",
                         return_value=FakeResponse(status_code=200)) as m:
             url = download.github_asset_url("o/r", "v1", ["zed-linux-x86_64.tar.gz"])
         self.assertEqual(url, "https://github.com/o/r/releases/download/v1/zed-linux-x86_64.tar.gz")
@@ -241,16 +241,16 @@ class GithubAssetUrlTest(unittest.TestCase):
             self.assertIn("expanded_assets", url)
             return FakeResponse(text=html)
 
-        with mock.patch("zed_onprem_bundle.download.requests.head", side_effect=_head), \
-             mock.patch("zed_onprem_bundle.download.requests.get", side_effect=_get):
+        with mock.patch("zed_portable.download.requests.head", side_effect=_head), \
+             mock.patch("zed_portable.download.requests.get", side_effect=_get):
             url = download.github_asset_url("o/r", "v1", ["zed-linux-x86_64.tar.gz"])
         self.assertEqual(url, "https://github.com/o/r/releases/download/v1/zed-linux-x86_64.tar.gz")
 
     def test_not_found_raises(self):
         """HEAD 全 404 且 HTML 无匹配 → AssetNotFoundError。"""
-        with mock.patch("zed_onprem_bundle.download.requests.head",
+        with mock.patch("zed_portable.download.requests.head",
                         return_value=FakeResponse(status_code=404)), \
-             mock.patch("zed_onprem_bundle.download.requests.get",
+             mock.patch("zed_portable.download.requests.get",
                         return_value=FakeResponse(text="no assets")):
             with self.assertRaises(download.AssetNotFoundError):
                 download.github_asset_url("o/r", "v1", ["nope-{tag}.tar.gz"])

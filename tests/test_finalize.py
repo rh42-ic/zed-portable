@@ -16,13 +16,13 @@ import unittest
 from pathlib import Path
 
 # 包在 src/ 布局：unittest discover 从项目根跑时，tests 内直接 import
-# zed_onprem_bundle 会失败——此处把项目根/src 插入 sys.path（最简单自足方案）。
+# zed_portable 会失败——此处把项目根/src 插入 sys.path（最简单自足方案）。
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from zed_onprem_bundle import finalize as finalize_mod
-from zed_onprem_bundle import node as node_mod
-from zed_onprem_bundle import toolchain as toolchain_mod
-from zed_onprem_bundle.finalize import (
+from zed_portable import finalize as finalize_mod
+from zed_portable import node as node_mod
+from zed_portable import toolchain as toolchain_mod
+from zed_portable.finalize import (
     _assert_products,
     _build_info_text,
     _merge_settings,

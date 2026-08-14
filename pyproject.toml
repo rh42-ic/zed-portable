@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "zed-onprem-bundle"
+name = "zed-portable"
 version = "0.1.0"
 description = "自包含离线 Zed 分发包构建器（构建时联网下载，运行时离线可用）"
 requires-python = ">=3.11"
@@ -13,10 +13,10 @@ dependencies = [
 ]
 
 [project.scripts]
-zed-onprem-bundle = "zed_onprem_bundle.cli:main"
+zed-portable = "zed_portable.cli:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/zed_onprem_bundle"]
+packages = ["src/zed_portable"]
 
 [dependency-groups]
 dev = [

@@ -16,7 +16,7 @@ from pathlib import Path
 from .config import SUPPORTED_PLATFORMS
 from .download import DownloadError, download_file
 
-log = logging.getLogger("zed_onprem_bundle.remote_server")
+log = logging.getLogger("zed_portable.remote_server")
 
 REMOTE_SERVER_REPO = "zed-industries/zed"
 

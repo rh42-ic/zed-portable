@@ -1,11 +1,11 @@
-# zed-onprem-bundle
+# zed-portable
 
 自包含的 **Zed 离线分发包**构建器。构建时（联网环境）下载并预置一切运行期资源；运行时（离线环境）Zed 第一次启动即可找到所有东西，功能完整可用。
 
 策略一句话：**预置完整 + 失败静默回退**——Zed 的所有下载点（LSP 版本查询、npm info、扩展更新检查、auto-update）在离线时均会失败，但失败后全部回退到本地缓存，功能不受影响（个别场景有 ~5s 超时延迟）。
 
 - 不修改 Zed 源码；产物为一个 bundle：`bin/`（zed 二进制）+ `data/`（用户数据目录，经 `--user-data-dir` 指向）
-- 单一入口命令 `zed-onprem-bundle build`，本地与 CI 一致
+- 单一入口命令 `zed-portable build`，本地与 CI 一致
 - 扩展/LSP/主题由 **preset 配置文件驱动**：available/ 是候选库，`ln -s` 到 enabled/ 才生效；不链接 = 什么都不装
 - 目标平台：**linux x86_64 + windows x86_64**（双平台在 CI 构建，本机仅构建/验证 linux）
 - 远程服务端（P2.5）：**独立 preset `config/available/remote.toml`**，链接才启用（不链接 = bundle 不带远程服务端）；启用后预置全 6 平台 `zed-remote-server`（linux/macos/windows × x86_64/aarch64）到 `data/remote_servers/`，任意平台远程（含离线）连接零下载部署；`[remote_server] platforms` 可裁剪（env `REMOTE_SERVER_PLATFORMS` 可独立启用）
@@ -34,7 +34,7 @@ ln -s ../available/themes.toml       # 美化：主题
 
 # 3. 构建（输出到 dist/）
 cd ..
-uv run zed-onprem-bundle build
+uv run zed-portable build
 ```
 
 要点：
@@ -98,7 +98,7 @@ uv run zed-onprem-bundle build
 
 1. **workflow_dispatch**（手动）→ 构建 linux-x64 + windows-x64 双平台产物，上传 artifact（不发布）。
 2. **push tag `bundle-*`** → 构建后 release job 自动打包（linux tar.gz + windows zip，均含 BUILD_INFO）并 `gh release create` 挂 GitHub release。
-3. CI 每次重建 `config/enabled/`（git 忽略）：workflow 内 `ln -s` preset 后执行与本地相同的 `uv sync` → `zed-onprem-bundle build`；全程 uv，禁止 pip。
+3. CI 每次重建 `config/enabled/`（git 忽略）：workflow 内 `ln -s` preset 后执行与本地相同的 `uv sync` → `zed-portable build`；全程 uv，禁止 pip。
 
 ## 限制与已知行为
 
@@ -111,9 +111,9 @@ uv run zed-onprem-bundle build
 ## 目录结构
 
 ```
-zed-onprem-bundle/
+zed-portable/
 ├── pyproject.toml / uv.lock / .python-version   # uv 工程（python 3.12）
-├── src/zed_onprem_bundle/                      # 构建器（cli/config/download/.../finalize）
+├── src/zed_portable/                      # 构建器（cli/config/download/.../finalize）
 ├── config/
 │   ├── available/                               # ★候选 preset 清单库（默认不生效）
 │   └── enabled/                                 # ★生效配置（ln -s preset + 自写增量；git 忽略）

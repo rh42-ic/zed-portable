@@ -253,7 +253,7 @@ wheels = [
 ]
 
 [[package]]
-name = "zed-onprem-bundle"
+name = "zed-portable"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

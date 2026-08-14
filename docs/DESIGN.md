@@ -1,4 +1,4 @@
-# zed-onprem-bundle 设计方案
+# zed-portable 设计方案
 
 ## 1. 目标与策略
 
@@ -12,7 +12,7 @@
 - 产物为**一个 bundle**：`bin/`（zed 二进制）+ `data/`（用户数据目录，通过 `--user-data-dir` 指向）
 - 本机构建 Zed 本体（cargo build）：**确认默认不做**——本机 AGENTS.md 禁 rust 编译；bundle 直接复用官方 release 二进制；端到端验证如需要仅可在 CI 进行
 - **实现语言：Python 3**（用户选定）。**工程结构随大流**：标准 Python 布局（pyproject.toml + src/ 包 + console script），不搞自定义薄壳/自定义目录
-- **包管理与入口（用户确认）**：**全程使用 uv，禁止 pip**——python 版本（`uv python install`）、依赖安装（`uv sync`，pyproject.toml 驱动 + 提交 uv.lock）、运行（`uv run`）；入口：`uv sync` 后 `zed-onprem-bundle build`（本地与 CI 同一命令）
+- **包管理与入口（用户确认）**：**全程使用 uv，禁止 pip**——python 版本（`uv python install`）、依赖安装（`uv sync`，pyproject.toml 驱动 + 提交 uv.lock）、运行（`uv run`）；入口：`uv sync` 后 `zed-portable build`（本地与 CI 同一命令）
 - **配置双目录**（用户选定）：`config/available/`（git 管理，工程随升级的常用经典配置）+ `config/enabled/`（git 忽略，用户真正启用的配置存放处，可放多个文件或软链接）；构建时扫描合并，enabled 覆盖 available
 - **输出目录随大流**（用户选定）：`.gitignore` 直接采用官方 Python.gitignore（github/gitignore）；构建中间产物 → `build/`、bundle 产物 → `dist/`，均已覆盖无需专门设置
 - **构建环境：GitHub Actions**（最终构建在 CI 完成，本机仅开发调试）。环境准备（setup-python、pip install、rustup target）由 workflow 显式声明，不依赖隐式本机状态
@@ -51,8 +51,8 @@
 ## 3. 工程结构
 
 ```
-zed-onprem-bundle/                 # 独立工程（本仓库）
-├── pyproject.toml                  # hatchling；dependencies=[requests, tomli(<3.11 marker)]；[project.scripts] zed-onprem-bundle
+zed-portable/                 # 独立工程（本仓库）
+├── pyproject.toml                  # hatchling；dependencies=[requests, tomli(<3.11 marker)]；[project.scripts] zed-portable
 ├── uv.lock                         # uv sync 生成（提交，锁定依赖）
 ├── .python-version                 # uv 固定 python 版本（3.12）
 ├── README.md
@@ -62,9 +62,9 @@ zed-onprem-bundle/                 # 独立工程（本仓库）
 ├── .github/
 │   └── workflows/build-bundle.yml  # ★ CI 构建定义（见 §5.7）
 ├── src/
-│   └── zed_onprem_bundle/         # 标准 src 布局包
+│   └── zed_portable/         # 标准 src 布局包
 │       ├── __init__.py
-│       ├── __main__.py             # python -m zed_onprem_bundle 等价入口
+│       ├── __main__.py             # python -m zed_portable 等价入口
 │       ├── cli.py                  # argparse：build 子命令 + --config-dir 等
 │       ├── config.py               # 配置合并：只扫 enabled/（展开软链接 preset）→ deep merge → 校验
 │       ├── download.py             # requests 下载助手（重试/超时/代理/GitHub 限流）
@@ -220,11 +220,11 @@ ln -s ../available/icons.toml        # 美化：图标
 
 ## 5. 构建流水线
 
-> 全程联网；每步幂等（产物存在则跳过）；本地与 CI 同一命令：`zed-onprem-bundle build`（`uv sync` 后）。
+> 全程联网；每步幂等（产物存在则跳过）；本地与 CI 同一命令：`zed-portable build`（`uv sync` 后）。
 > 阶段编号与 `src/` 模块一一对应（cli.py 按序调用：config 合并 → P1 → P2 → P2.5 → P3..P6，单阶段失败 → 非零退出，可修复后重跑）。
 
 ### P0 环境检查
-- **本机**：uv（uv python install 3.12）、node/npm、git；env：`ZED_REPO`（默认 `/home/dev/rust-dev/zed`）、`EXTENSIONS_REPO`（默认 `/home/dev/rust-dev/extensions`）、`ZED_RELEASE_TAG`/`EXTENSIONS_REV`（版本控制，优先级见 §4.2）；`uv sync`（首次；此后 `uv run zed-onprem-bundle ...`）
+- **本机**：uv（uv python install 3.12）、node/npm、git；env：`ZED_REPO`（默认 `/home/dev/rust-dev/zed`）、`EXTENSIONS_REPO`（默认 `/home/dev/rust-dev/extensions`）、`ZED_RELEASE_TAG`/`EXTENSIONS_REV`（版本控制，优先级见 §4.2）；`uv sync`（首次；此后 `uv run zed-portable ...`）
 - **CI**（见 §5.7）：由 workflow 显式准备，脚本内仅做存在性断言（不自动安装系统包）
 - **配置合并先行**（config.py）：§4 规则产出合并配置，供 P1-P6 使用
 - `wasm32-wasip2` target：CI 用 `rustup target add` 显式安装；本机已装
@@ -379,7 +379,7 @@ $NPM install && $NPM run compile   # 在该仓库根
 
 ### P7 GitHub Actions 工作流（.github/workflows/build-bundle.yml）
 
-最终构建在 CI 完成；本机仅开发调试。workflow 只负责**环境准备**，业务逻辑全部走与本地相同的命令 `zed-onprem-bundle build`（保证可复现）。
+最终构建在 CI 完成；本机仅开发调试。workflow 只负责**环境准备**，业务逻辑全部走与本地相同的命令 `zed-portable build`（保证可复现）。
 
 ```yaml
 name: build-bundle
@@ -390,10 +390,10 @@ on:
 jobs:
   build-linux:
     runs-on: ubuntu-latest
-    steps: [同下，平台参数 ZED_BUNDLE_PLATFORM=linux-x64，产物 zed-onprem-bundle-linux-x64]
+    steps: [同下，平台参数 ZED_BUNDLE_PLATFORM=linux-x64，产物 zed-portable-linux-x64]
   build-windows:
     runs-on: windows-latest
-    steps: [同下，平台参数 ZED_BUNDLE_PLATFORM=windows-x64，产物 zed-onprem-bundle-windows-x64]
+    steps: [同下，平台参数 ZED_BUNDLE_PLATFORM=windows-x64，产物 zed-portable-windows-x64]
   # 两 job 共用的步骤模板（bundle 工程内保留一份带注释的完整 yaml）：
   #   checkout bundle + extensions + zed 三仓库（同现有）
   #   astral-sh/setup-uv → uv sync --project ./bundle
@@ -404,7 +404,7 @@ jobs:
   #     cd bundle/config/enabled && ln -s ../available/core-zed.toml ../available/core-node.toml \
   #       ../available/web.toml ../available/eda.toml ../available/themes.toml
   #   Resolve bundle version（GITHUB_REF_NAME#bundle-，tag 触发才设 ZED_RELEASE_TAG）
-  #   zed-onprem-bundle build（env：ZED_REPO/EXTENSIONS_REPO/ZED_RELEASE_TAG/GITHUB_TOKEN/
+  #   zed-portable build（env：ZED_REPO/EXTENSIONS_REPO/ZED_RELEASE_TAG/GITHUB_TOKEN/
   #     WASI_SDK_VERSION=25/ZED_BUNDLE_PLATFORM=<平台>）
   #   upload-artifact（name 按平台；if-no-files-found: error）
   release:
@@ -416,21 +416,21 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: zed-onprem-bundle-linux-x64
+          name: zed-portable-linux-x64
           path: bundle-dist-linux
       - uses: actions/download-artifact@v4
         with:
-          name: zed-onprem-bundle-windows-x64
+          name: zed-portable-windows-x64
           path: bundle-dist-windows
       - name: Package
         shell: bash
         run: |
-          tar -C bundle-dist-linux -czf zed-onprem-bundle-${GITHUB_REF_NAME#bundle-}-linux-x64.tar.gz .
-          (cd bundle-dist-windows && zip -r ../zed-onprem-bundle-${GITHUB_REF_NAME#bundle-}-windows-x64.zip .)
+          tar -C bundle-dist-linux -czf zed-portable-${GITHUB_REF_NAME#bundle-}-linux-x64.tar.gz .
+          (cd bundle-dist-windows && zip -r ../zed-portable-${GITHUB_REF_NAME#bundle-}-windows-x64.zip .)
       - name: Create GitHub release          # gh CLI（runner 预装），无需第三方 action
         run: |
-          gh release create "$GITHUB_REF_NAME" zed-onprem-bundle-*.tar.gz zed-onprem-bundle-*.zip \
-            --title "zed-onprem-bundle ${GITHUB_REF_NAME#bundle-}" \
+          gh release create "$GITHUB_REF_NAME" zed-portable-*.tar.gz zed-portable-*.zip \
+            --title "zed-portable ${GITHUB_REF_NAME#bundle-}" \
             --notes "离线 bundle，对应 Zed ${{ github.ref_name }}（详见产物内 BUILD_INFO）"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -438,7 +438,7 @@ jobs:
 
 要点：
 - **环境显式声明**：uv 管理 python 3.12（`uv python install 3.12`，tomllib 可用）、node 22、rust stable + wasm32-wasip2、WASI SDK 由 P1 下载——不依赖 runner 隐式状态
-- **单一命令入口**：CI 与本地均为 `zed-onprem-bundle build`（uv sync 后，全程 uv 禁止 pip）；**CI 无 `config/enabled/`（git 忽略）→ 默认空 bundle，workflow 需先 `ln -s` 所需 preset 到 enabled/**（例：`core-zed.toml` + `core-node.toml` + `web.toml` + `eda.toml`）；平台经 `ZED_BUNDLE_PLATFORM` 指定（linux job / windows job 各设各的）
+- **单一命令入口**：CI 与本地均为 `zed-portable build`（uv sync 后，全程 uv 禁止 pip）；**CI 无 `config/enabled/`（git 忽略）→ 默认空 bundle，workflow 需先 `ln -s` 所需 preset 到 enabled/**（例：`core-zed.toml` + `core-node.toml` + `web.toml` + `eda.toml`）；平台经 `ZED_BUNDLE_PLATFORM` 指定（linux job / windows job 各设各的）
 - **双平台产物**：linux → tar.gz；windows → zip（release 双资产，均含 BUILD_INFO）
 - **版本控制**：tag `bundle-<zed-tag>` 推送 → workflow 解析出 `ZED_RELEASE_TAG` 传入构建，产物与上游 tag 严格对应；手动触发 → 空 = 最新 stable（构建后记录到 BUILD_INFO）
 - **发布**：release job 仅在 tag 推送时运行：tar.gz 打包 → `gh release create`（gh CLI runner 预装；permissions.contents: write）；workflow_dispatch 只出 artifact
@@ -465,7 +465,7 @@ jobs:
 1. **产物自检**（P6 内建）：全部文件存在性断言 + node/LSP `--version` 冒烟。
 2. **扩展冒烟**（离线）：构建后 `git stash` 掉联网路径，用 dist/run.sh 启动，确认：预置扩展出现在扩展面板、语法高亮生效、LSP 可启动（如 rust-analyzer 打开 .rs）。
 3. **端到端（已确认：不做 strace）**：仅"下载官方二进制 + 离线冒烟"——构建产物在离线环境用 run.sh 启动，确认扩展面板/高亮/LSP 可用（§7 第 2 条）。不做 Zed 本体构建（本机禁编译、CI 不加 cargo build zed job）。
-4. **重复构建**：二次运行 `zed-onprem-bundle build` 应全部命中缓存（幂等验证）。
+4. **重复构建**：二次运行 `zed-portable build` 应全部命中缓存（幂等验证）。
 
 ## 8. 可选后续（需改 Zed 源码时，以 patch 提供）
 
@@ -494,4 +494,4 @@ jobs:
 | windows 资产名待核验（zed-extension CLI / package-version-server 等） | 候选名逐一尝试 + release 页 HTML 解析降级；最终失败 → 告警跳过（CLI 仅影响 P2 兜底路径的该扩展；package-version-server 降级 bundle）；CI windows job 实测首跑时修正 |
 | preset 误收装饰类扩展 | 预设内容工程维护（人工把关）；用户可 ln -s 自写增量覆盖或去链接；打包失败自动跳过不阻断 |
 | extensions 仓库 submodule 网络量大 | 仅 P2 兜底路径（api 下载失败）触发，且只 `git submodule update --init --depth 1 extensions/<id>` 清单内扩展 |
-| CI 与本地行为不一致 | 单一入口命令 `zed-onprem-bundle build`；workflow 只做环境准备；产物断言（P6）在两端都执行 |
+| CI 与本地行为不一致 | 单一入口命令 `zed-portable build`；workflow 只做环境准备；产物断言（P6）在两端都执行 |

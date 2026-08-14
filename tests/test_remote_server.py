@@ -13,11 +13,11 @@ from pathlib import Path
 from unittest import mock
 
 # 包在 src/ 布局：unittest discover 从项目根跑时，tests 内直接 import
-# zed_onprem_bundle 会失败——此处把项目根/src 插入 sys.path（与 test_finalize 同方案）。
+# zed_portable 会失败——此处把项目根/src 插入 sys.path（与 test_finalize 同方案）。
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from zed_onprem_bundle import remote_server as remote_server_mod
-from zed_onprem_bundle.download import DownloadError
+from zed_portable import remote_server as remote_server_mod
+from zed_portable.download import DownloadError
 
 #: 默认 6 平台（与 config.SUPPORTED_PLATFORMS 一致）
 DEFAULT_PLATFORMS = [

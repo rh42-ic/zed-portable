@@ -19,8 +19,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from zed_onprem_bundle import download as download_mod
-from zed_onprem_bundle import toolchain as toolchain_mod
+from zed_portable import download as download_mod
+from zed_portable import toolchain as toolchain_mod
 
 
 def _write_executable(path: Path, body: str = "#!/bin/sh\nexit 0\n") -> Path:

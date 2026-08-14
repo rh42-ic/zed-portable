@@ -23,7 +23,7 @@ try:
 except ImportError:  # Python < 3.11
     import tomli as tomllib
 
-log = logging.getLogger("zed_onprem_bundle.config")
+log = logging.getLogger("zed_portable.config")
 
 #: 支持的远程服务端平台（schema 持有者；remote_server.py 从此 import）
 SUPPORTED_PLATFORMS = [

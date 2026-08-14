@@ -1,4 +1,4 @@
-"""python -m zed_onprem_bundle 等价入口。"""
+"""python -m zed_portable 等价入口。"""
 
 from .cli import main
 

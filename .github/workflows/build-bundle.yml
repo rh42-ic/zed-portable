@@ -1,8 +1,8 @@
 # =============================================================================
-# zed-onprem-bundle 构建工作流
+# zed-portable 构建工作流
 #
 # 职责划分：workflow 只做「环境准备 + preset 选择」，业务逻辑全部走与本地相同的
-# 单一命令入口 `zed-onprem-bundle build`（uv sync 后），保证 CI 与本地行为一致、可复现。
+# 单一命令入口 `zed-portable build`（uv sync 后），保证 CI 与本地行为一致、可复现。
 #
 # 触发方式：
 #   - workflow_dispatch（手动）：只产出构建 artifact（默认解析 channel 最新 stable）
@@ -33,7 +33,7 @@ jobs:
   # ---------------------------------------------------------------------------
   # 共享步骤模板：build-linux / build-windows 两 job 结构一致，仅平台参数不同
   #   ZED_BUNDLE_PLATFORM: linux-x64 | windows-x64
-  #   artifact name:       zed-onprem-bundle-linux-x64 | zed-onprem-bundle-windows-x64
+  #   artifact name:       zed-portable-linux-x64 | zed-portable-windows-x64
   # ---------------------------------------------------------------------------
   build-linux:
     runs-on: ubuntu-latest
@@ -106,7 +106,7 @@ jobs:
         shell: bash
 
       - name: Build bundle
-        run: uv run --project ./bundle zed-onprem-bundle build
+        run: uv run --project ./bundle zed-portable build
         shell: bash
         env:
           ZED_REPO: ${{ github.workspace }}/zed
@@ -119,7 +119,7 @@ jobs:
       - name: Upload bundle artifact (linux-x64)
         uses: actions/upload-artifact@v4
         with:
-          name: zed-onprem-bundle-linux-x64
+          name: zed-portable-linux-x64
           path: bundle/dist/
           if-no-files-found: error
 
@@ -189,7 +189,7 @@ jobs:
         shell: bash
 
       - name: Build bundle
-        run: uv run --project ./bundle zed-onprem-bundle build
+        run: uv run --project ./bundle zed-portable build
         shell: bash
         env:
           ZED_REPO: ${{ github.workspace }}/zed
@@ -202,7 +202,7 @@ jobs:
       - name: Upload bundle artifact (windows-x64)
         uses: actions/upload-artifact@v4
         with:
-          name: zed-onprem-bundle-windows-x64
+          name: zed-portable-windows-x64
           path: bundle/dist/
           if-no-files-found: error
 
@@ -219,26 +219,26 @@ jobs:
       - name: Download linux artifact
         uses: actions/download-artifact@v4
         with:
-          name: zed-onprem-bundle-linux-x64
+          name: zed-portable-linux-x64
           path: bundle-dist-linux
 
       - name: Download windows artifact
         uses: actions/download-artifact@v4
         with:
-          name: zed-onprem-bundle-windows-x64
+          name: zed-portable-windows-x64
           path: bundle-dist-windows
 
       - name: Package
         shell: bash
         run: |
-          tar -C bundle-dist-linux -czf zed-onprem-bundle-${GITHUB_REF_NAME#bundle-}-linux-x64.tar.gz .
-          (cd bundle-dist-windows && zip -r ../zed-onprem-bundle-${GITHUB_REF_NAME#bundle-}-windows-x64.zip .)
-          ls -lh zed-onprem-bundle-*
+          tar -C bundle-dist-linux -czf zed-portable-${GITHUB_REF_NAME#bundle-}-linux-x64.tar.gz .
+          (cd bundle-dist-windows && zip -r ../zed-portable-${GITHUB_REF_NAME#bundle-}-windows-x64.zip .)
+          ls -lh zed-portable-*
 
       - name: Create GitHub release
         run: |
-          gh release create "$GITHUB_REF_NAME" zed-onprem-bundle-*.tar.gz zed-onprem-bundle-*.zip \
-            --title "zed-onprem-bundle ${GITHUB_REF_NAME#bundle-}" \
+          gh release create "$GITHUB_REF_NAME" zed-portable-*.tar.gz zed-portable-*.zip \
+            --title "zed-portable ${GITHUB_REF_NAME#bundle-}" \
             --notes "离线 bundle，对应 Zed ${{ github.ref_name }}（详见产物内 BUILD_INFO）"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

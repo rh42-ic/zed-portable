@@ -19,9 +19,9 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from zed_onprem_bundle import download as download_mod
-from zed_onprem_bundle import extensions as ext_mod
-from zed_onprem_bundle import toolchain as toolchain_mod
+from zed_portable import download as download_mod
+from zed_portable import extensions as ext_mod
+from zed_portable import toolchain as toolchain_mod
 
 API = ext_mod.ZED_EXTENSIONS_API
 
