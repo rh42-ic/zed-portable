@@ -247,7 +247,8 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq zstd p7zip-full
-          tar -C bundle-dist-linux -I 'zstd -T0 --long=27 -9' -cf zed-portable-${GITHUB_REF_NAME#bundle-}-linux-x64.tar.zst .
+          python3 scripts/sort_by_mime.py bundle-dist-linux /tmp/zst-filelist.txt
+          tar -C bundle-dist-linux -I 'zstd -T0 --long=27 -9' -cf zed-portable-${GITHUB_REF_NAME#bundle-}-linux-x64.tar.zst -T /tmp/zst-filelist.txt
           (cd bundle-dist-windows && 7z a -t7z -mx=9 ../zed-portable-${GITHUB_REF_NAME#bundle-}-windows-x64.7z .)
           ls -lh zed-portable-*
 
