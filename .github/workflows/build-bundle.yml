@@ -225,6 +225,11 @@ jobs:
     permissions:
       contents: write          # gh release create 需要
     steps:
+      - name: Checkout (gh release create 需要 git 仓库上下文)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0        # 全量 fetch 保证 tag 可用
+
       - name: Download linux artifact
         uses: actions/download-artifact@v4
         with:

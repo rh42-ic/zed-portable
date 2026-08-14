@@ -112,6 +112,27 @@ def _run_npm(np, args: list[str], *, timeout: int, cwd: Path | None = None, is_w
         return None
 
 
+def _ensure_eslint_shared(repo_root: Path) -> None:
+    """把 client/server 的 shared 符号链接替换为真实目录复制（Windows 修复）。
+
+    vscode-eslint 归档里 client/src/shared 与 server/src/shared 是指向根
+    $shared/ 的符号链接。tarfile 在 Windows 上提取 symlink 时不带
+    target_is_directory=True，生成的是文件类型链接，Node/TypeScript 无法
+    按目录跟随 → tsc TS2307（Cannot find module './shared/...'）。复制目录
+    彻底消除链接类型/权限的平台差异（§5 P5）。
+    """
+    shared_src = repo_root / "$shared"
+    for link in (repo_root / "client" / "src" / "shared",
+                 repo_root / "server" / "src" / "shared"):
+        if link.is_dir() and not link.is_symlink():
+            continue  # 已是真实目录
+        if link.is_symlink() or link.is_file():
+            link.unlink()
+        elif link.is_dir():
+            shutil.rmtree(link)
+        shutil.copytree(shared_src, link)
+
+
 def _install_eslint(np, dist_dir: Path, is_windows: bool) -> None:
     """eslint 3.0.24：下载源码归档 → 唯一目录 rename 为 vscode-eslint → npm install+compile。
 
@@ -140,6 +161,8 @@ def _install_eslint(np, dist_dir: Path, is_windows: bool) -> None:
         shutil.rmtree(repo_root)
     versioned.mkdir(parents=True, exist_ok=True)
     shutil.move(str(tops[0]), str(repo_root))
+    # Windows: tarfile 提取的 shared symlink 是文件类型链接，Node/TS 无法跟随 → 替换为目录复制
+    _ensure_eslint_shared(repo_root)
 
     for step_args, step_label in ((["install"], "npm install"), (["run", "compile"], "npm run compile")):
         proc = _run_npm(np, step_args, timeout=900, cwd=repo_root, is_windows=is_windows)
