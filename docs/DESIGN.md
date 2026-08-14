@@ -216,7 +216,7 @@ ln -s ../available/icons.toml        # 美化：图标
 #   vim zz-mine.toml  →  [extensions] ids = ["zig","erlang"]；[lsp.github] gopls = true
 ```
 
-**CI 构建**：workflow 内同样 `ln -s` 需要的 preset 到 enabled/ 后执行 build（见 §5.7）。
+**CI 构建**：workflow 内全量链接全部 23 个 preset（`config/available/` 全部）到 enabled/ 后执行 build（见 §5.7；本地可只选需要的）。
 
 ## 5. 构建流水线
 
@@ -268,7 +268,7 @@ ln -s ../available/icons.toml        # 美化：图标
 |---|---|
 | 来源 | `zed-industries/zed` release 资产 `zed-remote-server-{os}-{arch}.{gz\|zip}`（windows=zip，linux/macos=gzip） |
 | 落位 | `dist/data/remote_servers/{channel}/{os}-{arch}/{version}.gz`（channel 取 `[zed] channel`，version 取 zed tag 去 `v` 前缀——与 zed 本体对齐） |
-| 配置 | **链接 `config/available/remote.toml` 才启用**（独立 preset，不跟随 core-zed；不链接 = 不下载）；`[remote_server] platforms` 可裁剪（缺省全 6）+ `source`（当前仅 github）；env `REMOTE_SERVER_PLATFORMS` 可独立启用（逗号分隔整体覆盖） |
+| 配置 | **链接 `config/available/remote.toml` 才启用**（独立 preset，不跟随 core-zed；不链接 = 不下载）；`[remote_server] platforms` 可裁剪（config 缺省全 6，preset remote.toml 默认 x86_64 三平台、aarch64 注释可选）+ `source`（当前仅 github）；env `REMOTE_SERVER_PLATFORMS` 可独立启用（逗号分隔整体覆盖） |
 | 跳过 | 未配置 `remote_server`（未链接 remote.toml）→ 跳过；`zed.binary` 为本地路径（zed_tag=local）→ 版本未知，告警跳过 |
 | 失败语义 | 下载失败/魔数不符 → raise（远程服务端是 zed 核心功能，硬失败，区别于 P4/P5 的告警跳过） |
 | 幂等 | dest 存在且魔数正确（windows=PK/zip，其余=1f8b/gzip）→ 跳过 |
@@ -400,9 +400,14 @@ jobs:
   #   setup-node 22（linux 构建 npm 依赖用；windows 同）
   #   dtolnay/rust-toolchain@stable targets wasm32-wasip2（仅 windows job 需要？——不，
   #   zed-extension CLI 默认走预编译下载，cargo build 仅作兜底，两平台都保留）
-  #   可执行 build 前先 ln -s 所需 preset（git 忽略 enabled/，CI 每次重建）：
-  #     cd bundle/config/enabled && ln -s ../available/core-zed.toml ../available/core-node.toml \
-  #       ../available/web.toml ../available/eda.toml ../available/themes.toml
+  #   可执行 build 前先 ln -s 全部 23 个 preset（git 忽略 enabled/，CI 每次重建；
+  #   与 workflow 的 Link enabled presets 步骤保持一致，本地可只选需要的）：
+  #     cd bundle/config/enabled
+  #     for p in core-zed core-node core-settings lang-python lang-js-ts lang-go lang-rust \
+  #              lang-jvm lang-cpp lang-script lang-functional lang-scientific eda data \
+  #              web devops embedded mobile misc snippets themes icons remote; do
+  #       ln -s "../available/${p}.toml"
+  #     done
   #   Resolve bundle version（GITHUB_REF_NAME#bundle-，tag 触发才设 ZED_RELEASE_TAG）
   #   zed-portable build（env：ZED_REPO/EXTENSIONS_REPO/ZED_RELEASE_TAG/GITHUB_TOKEN/
   #     WASI_SDK_VERSION=25/ZED_BUNDLE_PLATFORM=<平台>）
@@ -438,7 +443,7 @@ jobs:
 
 要点：
 - **环境显式声明**：uv 管理 python 3.12（`uv python install 3.12`，tomllib 可用）、node 22、rust stable + wasm32-wasip2、WASI SDK 由 P1 下载——不依赖 runner 隐式状态
-- **单一命令入口**：CI 与本地均为 `zed-portable build`（uv sync 后，全程 uv 禁止 pip）；**CI 无 `config/enabled/`（git 忽略）→ 默认空 bundle，workflow 需先 `ln -s` 所需 preset 到 enabled/**（例：`core-zed.toml` + `core-node.toml` + `web.toml` + `eda.toml`）；平台经 `ZED_BUNDLE_PLATFORM` 指定（linux job / windows job 各设各的）
+- **单一命令入口**：CI 与本地均为 `zed-portable build`（uv sync 后，全程 uv 禁止 pip）；**CI 无 `config/enabled/`（git 忽略）→ 默认空 bundle，workflow 需先 `ln -s` 全部 23 个 preset（`config/available/` 全部）到 enabled/**（全量组合：核心+流行语言+EDA+数据/常见文件语法+各功能+remote；本地可只选需要的）；平台经 `ZED_BUNDLE_PLATFORM` 指定（linux job / windows job 各设各的）
 - **双平台产物**：linux → tar.gz；windows → zip（release 双资产，均含 BUILD_INFO）
 - **版本控制**：tag `bundle-<zed-tag>` 推送 → workflow 解析出 `ZED_RELEASE_TAG` 传入构建，产物与上游 tag 严格对应；手动触发 → 空 = 最新 stable（构建后记录到 BUILD_INFO）
 - **发布**：release job 仅在 tag 推送时运行：tar.gz 打包 → `gh release create`（gh CLI runner 预装；permissions.contents: write）；workflow_dispatch 只出 artifact

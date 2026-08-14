@@ -178,12 +178,16 @@ class ConfigMergeTest(unittest.TestCase):
 
     def test_remote_server_from_remote_preset(self):
         """链接 config/available/remote.toml → remote_server 启用：
-        platforms 全 6、source github（独立 preset，不跟随 core-zed）。"""
+        platforms 默认 x86_64 三平台（aarch64 在文件内注释）、source github
+        （独立 preset，不跟随 core-zed）。"""
         preset_path = Path(__file__).resolve().parents[1] / "config" / "available" / "remote.toml"
         preset = preset_path.read_text(encoding="utf-8")
         cfg_dir = self.make_config_dir({"remote.toml": preset})
         cfg = load_merged_config(cfg_dir)
-        self.assertEqual(cfg["remote_server"]["platforms"], list(cfgmod.SUPPORTED_PLATFORMS))
+        self.assertEqual(
+            cfg["remote_server"]["platforms"],
+            ["linux-x86_64", "macos-x86_64", "windows-x86_64"],
+        )
         self.assertEqual(cfg["remote_server"]["source"], "github")
 
     def test_remote_server_invalid_platform_raises(self):

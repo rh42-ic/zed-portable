@@ -1,6 +1,8 @@
 # config/available/remote.toml —— 远程开发服务端（zed-remote-server）
 # 链接它才下载多平台远程服务端（不链接 = bundle 不带远程服务端）
-# 裁剪平台：只留需要的 {os}-{arch}（linux/macos/windows × x86_64/aarch64）
+# 默认只装 x86_64 三平台（linux/macos/windows）；arm/aarch64 使用较少默认不装，
+# 需要时取消下面 aarch64 平台行的注释即可（注意逗号）：
 [remote_server]
-platforms = ["linux-x86_64", "linux-aarch64", "macos-x86_64", "macos-aarch64", "windows-x86_64", "windows-aarch64"]
+platforms = ["linux-x86_64", "macos-x86_64", "windows-x86_64"]
+#   "linux-aarch64", "macos-aarch64", "windows-aarch64",
 source = "github"
