@@ -125,7 +125,7 @@ def _assert_products(
             continue
         installed_dir = dist_dir / "data" / "extensions" / "installed" / eid
         if not is_valid_extension_artifact(installed_dir):
-            missing.append(f"扩展 {eid}: 产物缺失（extension.toml + 至少一个 *.wasm）：{installed_dir}")
+            missing.append(f"扩展 {eid}: 产物缺失（extension.toml + 有效内容：*.wasm / themes/ / icons/ / snippets/）：{installed_dir}")
 
     if missing:
         raise AssertionError("产物断言失败，缺失：\n  " + "\n  ".join(missing))

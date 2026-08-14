@@ -353,5 +353,66 @@ class LazyToolchainBackfillTests(unittest.TestCase):
         cli.assert_not_called()
 
 
+class IsValidExtensionArtifactTests(unittest.TestCase):
+    """is_valid_extension_artifact：extension.toml 必需 + 三种合法内容形态之一
+    （根 extension.wasm / grammars/*.wasm / themes/*.json——纯主题扩展无任何 wasm）。"""
+
+    def setUp(self):
+        self._tmp = Path(tempfile.mkdtemp(prefix="ext_valid_"))
+        self.addCleanup(shutil.rmtree, self._tmp, ignore_errors=True)
+
+    def _ext_dir(self, eid="ext", with_toml=True) -> Path:
+        d = self._tmp / eid
+        d.mkdir(parents=True, exist_ok=True)
+        if with_toml:
+            (d / "extension.toml").write_text("name = 'x'\nversion = '1.0.0'\n")
+        return d
+
+    def test_root_wasm_valid(self):
+        d = self._ext_dir()
+        (d / "extension.wasm").write_bytes(b"\0asm")
+        self.assertTrue(ext_mod.is_valid_extension_artifact(d))
+
+    def test_grammars_wasm_valid(self):
+        d = self._ext_dir()
+        (d / "grammars").mkdir()
+        (d / "grammars" / "x.wasm").write_bytes(b"x")
+        self.assertTrue(ext_mod.is_valid_extension_artifact(d))
+
+    def test_theme_json_valid(self):
+        """纯主题扩展（material-theme 等）：extension.toml + themes/*.json，无 wasm → 合法。"""
+        d = self._ext_dir()
+        (d / "themes").mkdir()
+        (d / "themes" / "material-theme.json").write_text("{}")
+        self.assertTrue(ext_mod.is_valid_extension_artifact(d))
+
+    def test_icons_valid(self):
+        """图标扩展（vscode-icons 等）：extension.toml + icons/*.svg（+ icon_themes/*.json）→ 合法。"""
+        d = self._ext_dir()
+        (d / "icons").mkdir()
+        (d / "icons" / "haskell.svg").write_text("<svg/>")
+        (d / "icon_themes").mkdir()
+        (d / "icon_themes" / "theme.json").write_text("{}")
+        self.assertTrue(ext_mod.is_valid_extension_artifact(d))
+
+    def test_snippets_valid(self):
+        """snippet 扩展（kubernetes-snippets 等）：extension.toml + snippets/*.json → 合法。"""
+        d = self._ext_dir()
+        (d / "snippets").mkdir()
+        (d / "snippets" / "yaml.json").write_text("{}")
+        self.assertTrue(ext_mod.is_valid_extension_artifact(d))
+
+    def test_toml_only_invalid(self):
+        """只有 extension.toml（无 wasm / grammars / themes / icons / snippets）→ 不合法。"""
+        d = self._ext_dir()
+        self.assertFalse(ext_mod.is_valid_extension_artifact(d))
+
+    def test_missing_toml_invalid(self):
+        d = self._ext_dir("ext2", with_toml=False)
+        (d / "themes").mkdir(parents=True, exist_ok=True)
+        (d / "themes" / "t.json").write_text("{}")
+        self.assertFalse(ext_mod.is_valid_extension_artifact(d))
+
+
 if __name__ == "__main__":
     unittest.main()

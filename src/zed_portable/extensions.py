@@ -204,7 +204,7 @@ def _install_from_api(
     if not is_valid_extension_artifact(tmp):
         if installed_dir.exists():
             shutil.rmtree(installed_dir, ignore_errors=True)  # 防坏扩展
-        print(f"  WARN: 官方产物缺 extension.toml / *.wasm：{eid}（上游异常，跳过）")
+        print(f"  WARN: 官方产物缺 extension.toml / 有效内容（*.wasm / themes/ / icons/ / snippets/）：{eid}（上游异常，跳过）")
         return False
     if installed_dir.exists():
         shutil.rmtree(installed_dir)
@@ -214,19 +214,37 @@ def _install_from_api(
 
 
 def is_valid_extension_artifact(ext_dir: Path) -> bool:
-    """校验扩展产物：extension.toml 必需，wasm 至少一个（§5 P2 的 OR 语义）。
+    """校验扩展产物：extension.toml 必需，且至少一种有效内容（§5 P2 的 OR 语义）。
 
-    带扩展逻辑的扩展（vue/verilog 等）根级有 extension.wasm；纯语法扩展
-    （tcl/p4/systemrdl 等）官方产物只有 grammars/*.wasm——二者均合法。
+    纯内容扩展（theme/图标/snippet）官方产物无 wasm，属正常形态：
+    - 带扩展逻辑的扩展（vue/verilog 等）根级有 extension.wasm；
+    - 纯语法扩展（tcl/p4/systemrdl 等）官方产物只有 grammars/*.wasm；
+    - 纯主题扩展（material-theme 等）只有 themes/*.json；
+    - 图标扩展（vscode-icons 等）有 icons/*.svg（+ icon_themes/*.json）；
+    - snippet 扩展（kubernetes-snippets 等）有 snippets/*.json。
     P2 安装校验与 P6 finalize 断言共用本函数，避免规则漂移。
     """
     if not (ext_dir / "extension.toml").is_file():
         return False
+    if _has_content_files(ext_dir):
+        return True
+    return False
+
+
+def _has_content_files(ext_dir: Path) -> bool:
+    """目录内至少一种有效内容形态（任一目录存在对应后缀文件即可）。"""
     if (ext_dir / "extension.wasm").is_file():
         return True
-    grammars = ext_dir / "grammars"
-    if grammars.is_dir():
-        return any(p.suffix == ".wasm" for p in grammars.iterdir())
+    for sub, suffix in (
+        ("grammars", ".wasm"),
+        ("themes", ".json"),
+        ("icons", ".svg"),
+        ("icon_themes", ".json"),
+        ("snippets", ".json"),
+    ):
+        d = ext_dir / sub
+        if d.is_dir() and any(p.suffix == suffix for p in d.iterdir()):
+            return True
     return False
 
 
