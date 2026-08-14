@@ -17,3 +17,8 @@ zed-onprem-bundle = "zed_onprem_bundle.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/zed_onprem_bundle"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]

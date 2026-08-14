@@ -1,4 +1,9 @@
-"""P1 工具链：WASI SDK + zed-extension CLI + zed 二进制。
+"""P1 zed 二进制：官方 release 下载 / 本地路径复制 + 版本解析。
+
+本模块只保证 zed 本体（P1 职责）；WASI SDK 与 zed-extension CLI 不再随 P1
+强制获取——由 P2 扩展的兜底路径（本地打包）按需惰性获取，见
+``ensure_wasi_sdk`` / ``ensure_zed_extension_cli``（P2 主路径官方 API 直下
+打包产物时无需二者，Toolchain 对应字段保持 None）。
 
 本机禁 rust 编译（AGENTS.md 硬约束）——zed-extension CLI 一律走预编译下载分支；
 `cargo build -p extension_cli` 仅作为 CI 兜底说明（见 `_ensure_zed_extension_cli` 的
@@ -46,13 +51,18 @@ ZED_ASSET_CANDIDATES = {
 
 @dataclass
 class Toolchain:
-    """P1 产物：WASI SDK + zed-extension CLI + zed 二进制（含解析出的版本信息）。"""
+    """P1 产物：zed 二进制 + 版本信息。
 
-    wasi_sdk_path: Path
-    zed_extension: Path
+    wasi_sdk_path / zed_extension 默认 None（惰性）——仅 P2 扩展兜底路径
+    （本地打包）按需通过 ``toolchain.ensure_wasi_sdk`` /
+    ``toolchain.ensure_zed_extension_cli`` 获取并回填。
+    """
+
     zed_bin: Path
     zed_tag: str
     zed_commit: str
+    wasi_sdk_path: Path | None = None
+    zed_extension: Path | None = None
 
 
 def _download():
@@ -122,8 +132,12 @@ def _resolve_tag_commit(tag: str, headers: dict) -> str:
     raise RuntimeError(f"无法将 tag {tag!r} 解析为 commit（最终 object.type={obj_type!r}）")
 
 
-def ensure_toolchain(cfg, platform: str, build_dir: Path, dist_dir: Path) -> Toolchain:
-    """P1 主流程：WASI SDK → zed-extension CLI → zed 二进制（每步幂等）。"""
+def ensure_zed_binary(cfg, platform: str, build_dir: Path, dist_dir: Path) -> Toolchain:
+    """P1 主流程：仅 zed 二进制（download/本地路径）+ zed_tag/zed_commit 解析（幂等）。
+
+    不再强制下载 WASI SDK / zed-extension CLI——返回的 Toolchain 对应字段为
+    None，由 P2 扩展兜底路径惰性获取（见 ensure_wasi_sdk / ensure_zed_extension_cli）。
+    """
     dl = _download()
     build_dir = Path(build_dir)
     dist_dir = Path(dist_dir)
@@ -131,23 +145,11 @@ def ensure_toolchain(cfg, platform: str, build_dir: Path, dist_dir: Path) -> Too
     plat = "windows-x64" if is_windows else "linux-x64"
     exe = ".exe" if is_windows else ""
 
-    # 1) WASI SDK v25（幂等：build/wasi-sdk 存在即跳过）
-    wasi_sdk_path = _ensure_wasi_sdk(build_dir, is_windows)
-
-    # 2) zed-extension CLI（幂等：存在即可执行则跳过，不重下）
-    cli_path = build_dir / f"zed-extension{exe}"
-    zed_tag: str = ""
-    zed_commit: str = ""
-    if cli_path.is_file() and os.access(cli_path, os.X_OK):
-        print(f"zed-extension CLI 已存在：{cli_path}（跳过下载）")
-    else:
-        # CLI 下载 URL 需要对应 commit sha
-        zed_tag, zed_commit = resolve_zed_tag(cfg)
-        _ensure_zed_extension_cli(cli_path, zed_commit, is_windows)
-
-    # 3) zed 二进制（binary=download → 官方 release；路径 → 本地复制）
+    # zed 二进制（binary=download → 官方 release；路径 → 本地复制）
     binary = (cfg.get("zed") or {}).get("binary") or "download"
     zed_bin = dist_dir / "bin" / f"zed{exe}"
+    zed_tag: str = ""
+    zed_commit: str = ""
     if binary == "download":
         if _is_valid_zed(zed_bin):
             print(f"zed 二进制已存在并通过校验：{zed_bin}（跳过下载）")
@@ -158,25 +160,32 @@ def ensure_toolchain(cfg, platform: str, build_dir: Path, dist_dir: Path) -> Too
             elif release_tag and not zed_tag:
                 zed_tag, zed_commit = release_tag, ""
         else:
-            if not zed_tag:  # CLI 幂等命中时 tag 尚未解析
-                zed_tag, zed_commit = resolve_zed_tag(cfg)
+            zed_tag, zed_commit = resolve_zed_tag(cfg)
             _download_zed(zed_tag, plat, build_dir, dist_dir)
     else:
         _copy_local_zed(binary, zed_bin, is_windows)
         zed_tag, zed_commit = "local", ""
 
     return Toolchain(
-        wasi_sdk_path=wasi_sdk_path,
-        zed_extension=cli_path,
         zed_bin=zed_bin,
         zed_tag=zed_tag,
         zed_commit=zed_commit,
+        wasi_sdk_path=None,
+        zed_extension=None,
     )
 
 
 # ---------------------------------------------------------------------------
-# WASI SDK
+# WASI SDK（惰性：P2 扩展兜底路径按需获取）
 # ---------------------------------------------------------------------------
+def ensure_wasi_sdk(build_dir: Path, platform: str) -> Path:
+    """惰性获取 WASI SDK v25（P2 兜底路径用）；幂等：build/wasi-sdk 存在即跳过。
+
+    返回内部 wasi-sdk-25.0-* 目录；下载/解压失败 raise（调用方告警跳过该扩展）。
+    """
+    return _ensure_wasi_sdk(Path(build_dir), _is_windows(platform))
+
+
 def _ensure_wasi_sdk(build_dir: Path, is_windows: bool) -> Path:
     """下载并解压 WASI SDK v25，返回内部 wasi-sdk-25.0-* 目录。幂等：build/wasi-sdk 存在即跳过。"""
     dl = _download()
@@ -208,13 +217,35 @@ def _find_wasi_sdk_dir(sdk_root: Path) -> Path:
 
 
 # ---------------------------------------------------------------------------
-# zed-extension CLI
+# zed-extension CLI（惰性：P2 扩展兜底路径按需获取）
 # ---------------------------------------------------------------------------
+def ensure_zed_extension_cli(build_dir: Path, platform: str, zed_commit: str) -> Path:
+    """惰性获取 zed-extension CLI（P2 兜底路径用）。
+
+    幂等：build/zed-extension(.exe) 已存在且可执行 → 直接返回；否则下载
+    （预编译，本机禁 rust 编译），失败 raise（提示 CI cargo build 兜底）。
+    """
+    is_windows = _is_windows(platform)
+    cli_path = Path(build_dir) / f"zed-extension{'.exe' if is_windows else ''}"
+    if cli_path.is_file() and os.access(cli_path, os.X_OK):
+        print(f"zed-extension CLI 已存在：{cli_path}（跳过下载）")
+        return cli_path
+    _ensure_zed_extension_cli(cli_path, zed_commit, is_windows)
+    return cli_path
+
+
 def _ensure_zed_extension_cli(cli_path: Path, zed_commit: str, is_windows: bool) -> None:
-    """下载预编译 zed-extension CLI（本机禁 rust 编译，不走 cargo build）。"""
+    """下载预编译 zed-extension CLI（本机禁 rust 编译，不走 cargo build）。
+
+    CLI 按 commit 发布到 DO bucket，官方用 zed 仓库移动指针 tags/extension-cli
+    标记当前可用版本（extensions 仓库 ci.yml 亦固定同一 sha）；release tag 的
+    commit 通常没有对应 CLI 产物（403）——先解析 extension-cli 标签，失败才回退
+    release commit。
+    """
     dl = _download()
     plat = "windows-x64" if is_windows else "linux-x64"
-    url = f"{ZED_EXTENSION_CLI_BASE}/{zed_commit}/{ZED_EXTENSION_CLI_PLATFORM[plat]}"
+    cli_sha = _extension_cli_sha(dl.github_headers()) or zed_commit
+    url = f"{ZED_EXTENSION_CLI_BASE}/{cli_sha}/{ZED_EXTENSION_CLI_PLATFORM[plat]}"
     try:
         dl.download_file(url, cli_path)
     except dl.DownloadError as exc:
@@ -224,14 +255,37 @@ def _ensure_zed_extension_cli(cli_path: Path, zed_commit: str, is_windows: bool)
         ) from exc
     if not is_windows:
         os.chmod(cli_path, 0o755)
-    print(f"zed-extension CLI 就绪：{cli_path}")
+    print(f"zed-extension CLI 就绪：{cli_path}（cli_sha={cli_sha}）")
+
+
+def _extension_cli_sha(headers: dict) -> str:
+    """解析 zed 仓库 tags/extension-cli（publish_extension_cli 工作流的移动指针）。
+
+    返回 commit sha；解析失败返回空串（调用方回退 release commit）。
+    """
+    dl = _download()
+    try:
+        ref = dl.get_json(
+            "https://api.github.com/repos/zed-industries/zed/git/ref/tags/extension-cli",
+            headers=headers,
+        )
+        obj = ref.get("object") or {}
+        return obj.get("sha", "") if obj.get("type") == "commit" else ""
+    except Exception:  # noqa: BLE001 —— 网络/解析失败一律回退
+        return ""
 
 
 # ---------------------------------------------------------------------------
 # zed 二进制
 # ---------------------------------------------------------------------------
 def _download_zed(tag: str, plat: str, build_dir: Path, dist_dir: Path) -> None:
-    """按平台下载 zed 官方 release 资产并落位 dist/bin/zed(.exe)，随后校验。"""
+    """按平台下载 zed 官方 release 资产并落位 dist/bin/zed(.exe)，随后校验。
+
+    linux tar（release.yml:453-454）解压后是 zed.app/ 应用包：bin/zed 是启动器，
+    真实编辑器在 libexec/zed-editor，lib/ 内置运行时 .so，share/ 为桌面集成。
+    复制必须保持相对布局（启动器按 `../libexec/zed-editor` 定位 bundle）：
+    bin/ → dist/bin、libexec/ → dist/libexec、lib/ → dist/lib、share/ → dist/share。
+    """
     dl = _download()
     is_windows = plat.startswith("windows")
     candidates = ZED_ASSET_CANDIDATES[plat]
@@ -242,18 +296,32 @@ def _download_zed(tag: str, plat: str, build_dir: Path, dist_dir: Path) -> None:
         # 单文件 exe（release.yml:723-724）：直接落位 dist/bin/zed.exe
         dl.download_file(url, bin_dir / "zed.exe")
     else:
-        # linux tar（release.yml:453-454）：解压后 glob 找名为 zed 的可执行文件
         archive = build_dir / "zed-linux-x86_64.tar.gz"
         dl.download_file(url, archive)
         extract_dir = build_dir / "zed-linux-x86_64"
         if extract_dir.is_dir():
             shutil.rmtree(extract_dir)
         dl.extract_archive(archive, extract_dir)
-        zed_src = _find_zed_binary(extract_dir)
-        shutil.copy2(zed_src, bin_dir / "zed")
+        app = _find_zed_app(extract_dir)
+        shutil.copy2(app / "bin" / "zed", bin_dir / "zed")
         os.chmod(bin_dir / "zed", 0o755)
+        for sub in ("libexec", "lib", "share"):
+            src = app / sub
+            if src.is_dir():
+                shutil.copytree(src, dist_dir / sub, dirs_exist_ok=True)
     # 下载后校验：存在 + 可执行 + --version 退出码 0（失败 raise）
     _verify_zed(bin_dir / ("zed.exe" if is_windows else "zed"))
+
+
+def _find_zed_app(extract_dir: Path) -> Path:
+    """在解压目录中找 zed.app 应用包目录（linux tar 顶层）。"""
+    matches = [p for p in extract_dir.iterdir() if p.is_dir() and p.name.endswith(".app")]
+    if not matches:
+        # 兜底：布局变化时退化为最浅名为 zed 的可执行文件所在的父目录
+        zed = _find_zed_binary(extract_dir)
+        return zed.parent
+    matches.sort(key=lambda p: len(p.name))
+    return matches[0]
 
 
 def _find_zed_binary(extract_dir: Path) -> Path:

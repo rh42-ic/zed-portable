@@ -68,8 +68,8 @@ zed-onprem-bundle/                 # 独立工程（本仓库）
 │       ├── cli.py                  # argparse：build 子命令 + --config-dir 等
 │       ├── config.py               # 配置合并：只扫 enabled/（展开软链接 preset）→ deep merge → 校验
 │       ├── download.py             # requests 下载助手（重试/超时/代理/GitHub 限流）
-│       ├── toolchain.py            # WASI SDK + zed-extension CLI
-│       ├── extensions.py           # 扩展打包：submodule → zed-extension → installed/ 落位
+│       ├── toolchain.py            # zed 二进制 + 版本解析；WASI SDK / zed-extension CLI（惰性，P2 兜底用）
+│       ├── extensions.py           # 扩展：官方 API 下载（主）→ submodule 打包（兜底）→ installed/ 落位
 │       ├── node.py                 # node 运行时下载 + 结构校验
 │       ├── lsp_github.py           # GitHub 型 LSP：release → 下载 → 解压 → metadata
 │       ├── lsp_npm.py              # npm 型 LSP 预安装 + eslint 源码编译
@@ -233,28 +233,32 @@ ln -s ../available/icons.toml        # 美化：图标
 ### P1 工具链（src/toolchain.py）——资产按平台
 | 组件 | linux-x64 | windows-x64 | 备注 |
 |---|---|---|---|
-| WASI SDK v25 | `wasi-sdk-25.0-x86_64-linux.tar.gz` | `wasi-sdk-25.0-x86_64-windows.tar.gz` | github.com/WebAssembly/wasi-sdk releases；→ `build/wasi-sdk`；经 `WASI_SDK_PATH` 传给 zed-extension |
-| zed-extension CLI | `https://zed-extension-cli.nyc3.digitaloceanspaces.com/$SHA/x86_64-unknown-linux-gnu/zed-extension` | `.../$SHA/x86_64-pc-windows-msvc/zed-extension.exe`（**URL 待核验**） | $SHA = ZED_RELEASE_TAG 对应 commit；**本机（linux）一律预编译下载（AGENTS.md 禁 rust 编译）**；仅 CI 可选 `cargo build -p extension_cli` 兜底（产物 `target/release/zed-extension(.exe)`）。下载/构建失败 → 构建失败（P2 强依赖） |
+| WASI SDK v25 | `wasi-sdk-25.0-x86_64-linux.tar.gz` | `wasi-sdk-25.0-x86_64-windows.tar.gz` | **惰性**（仅 P2 兜底路径触发）：github.com/WebAssembly/wasi-sdk releases → `build/wasi-sdk`；经 `WASI_SDK_PATH` 传给 zed-extension。P2 主路径（官方 API 下载）不需要 |
+| zed-extension CLI | `https://zed-extension-cli.nyc3.digitaloceanspaces.com/$SHA/x86_64-unknown-linux-gnu/zed-extension` | `.../$SHA/x86_64-pc-windows-msvc/zed-extension.exe`（**URL 待核验**） | **惰性**（仅 P2 兜底路径触发）：$SHA = ZED_RELEASE_TAG 对应 commit；**本机（linux）一律预编译下载（AGENTS.md 禁 rust 编译）**；仅 CI 可选 `cargo build -p extension_cli` 兜底（产物 `target/release/zed-extension(.exe)`）。获取失败 → 该扩展跳过（不影响 P2 主路径） |
 | zed 二进制 | `zed-linux-x86_64.tar.gz`（GitHub releases 资产，release.yml:453-454） | `Zed-x86_64.exe`（单文件 exe，release.yml:723-724；复制为 `dist/bin/zed.exe`） | tag 由 `ZED_RELEASE_TAG`/`[zed] release_tag` 决定，缺省查 channel 最新；或 `binary = "/path"` 复制本地产物；下载后校验（存在 + 可执行 + `--version`） |
 
 > 资产命名漂移对策：zed 二进制下载失败时按 release.yml:785 资产全清单（EXPECTED_ASSETS）重新解析资产名；LSP 资产同理见 P4。
 
-### P2 扩展打包（src/extensions.py）
-对配置中每个 id（示意，等价逻辑由 Python 实现）：
+### P2 扩展（src/extensions.py）
+对配置中每个 id，**主路径为 Zed 官方 API 直接下载打包产物**（与 Zed 运行时安装机制一致，无需源码/编译）：
+
 ```bash
-# 1. 确保 submodule 已初始化（extensions 仓库多数扩展为 submodule）
-git submodule update --init --depth 1 extensions/<id>   # 在 EXTENSIONS_REPO
-# 2. 打包（产物 = extension.toml + extension.wasm + grammars/ + languages/ + themes/ ...）
-zed-extension --scratch-dir build/ext --source-dir "$EXTENSIONS_REPO/extensions/<id>" \
-              --output-dir build/ext/out/<id>
-# 3. 落位（manifest.json 为发布元数据，运行时不需要，删除）
-cp -r build/ext/out/<id>/* dist/data/extensions/installed/<id>/
-rm -f dist/data/extensions/installed/<id>/manifest.json
+# 1. 元数据：GET https://api.zed.dev/extensions/<id> → {"data":[{version, schema_version, wasm_api_version, ...}, ...]}
+#    选"最新兼容版"：schema_version(缺省0) <= 1 且 wasm_api_version(缺省兼容) <= 0.7.0，取 semver 最大
+#    （常量出处：zed crates/extension_host/src/extension_host.rs:75 CURRENT_SCHEMA_VERSION=1；
+#      crates/extension_host/src/wasm_host/wit.rs:60-69 stable/preview wasm_api_version_range=0.0.1..=0.7.0）
+# 2. 幂等比对：installed/<id>/extension.toml 的 version == 最新兼容版 → 跳过（零下载，离线可重跑）
+# 3. 下载：GET https://api.zed.dev/extensions/<id>/<version>/download
+#    → 302 重定向 S3 presigned（3 分钟有效）→ tar.gz（requests 自动跟随；HEAD 会 404，勿用）
+# 4. 落位：解压 → dist/data/extensions/installed/<id>/（结构 = extension.toml + extension.wasm
+#    + languages/ + grammars/，无 manifest.json）；校验 extension.toml + extension.wasm 存在
 ```
+
+- **兜底（api 下载失败/不可达时）**：回退源码打包——`git submodule update --init --depth 1 extensions/<id>`（EXTENSIONS_REPO 内）→ `zed-extension --scratch-dir build/ext --source-dir ... --output-dir build/ext/out/<id>` → 复制落位 + 删 manifest.json。此时惰性获取 WASI SDK + zed-extension CLI（`toolchain.ensure_wasi_sdk` / `toolchain.ensure_zed_extension_cli`），获取失败 → 该扩展跳过。
 - **依赖打包顺序**：wasm 扩展的 LSP 由扩展自身在运行时下载到 `work/{id}/`（离线会失败）——含 LSP 的扩展（如 gleam）离线仅语法高亮，需后续阶段为它的 LSP 单独预置（见 §5.5）。
 - **空清单语义**：合并后 `ids` 缺省/空数组 = 不装任何扩展（**不链接 = 什么都不要**）；preset 文件不写 `[extensions]` 即不装扩展
 - **不在清单内的扩展不得写入** installed/（运行时 check_for_updates 只对已装扩展有效，不会删除）。
-- 打包失败（缺依赖/编译错）→ 打印警告跳过该扩展，不阻断整体。
+- 下载/打包失败（网络/404/编译错）→ 打印警告跳过该扩展（主路径失败先试兜底），不阻断整体。
 
 ### P3 Node（src/node.py）
 | 平台 | 资产 | 解压后根 |
@@ -474,7 +478,7 @@ jobs:
 | zed release 资产命名漂移 | 资产名 `zed-linux-x86_64.tar.gz`/`zed-linux-aarch64.tar.gz`（已核验 zed/.github/workflows/release.yml:453-454）；下载后 `--version` 校验兜底 |
 | 离线机无 GPU | 软件渲染警告阻塞启动（zed.rs:734-756）→ run.sh 文档注明可 `ZED_ALLOW_EMULATED_GPU=1` 绕过；bundle 不预置 |
 | CI 超时（扩展打包、cargo build） | preset 按需（典型规模 5-30 扩展 × 1-3s，分钟级）；扩展失败不阻断（告警跳过）；阶段幂等可续跑；zed-extension 优先下载 CI 预编译版；全量 cargo build 默认不做 |
-| windows 资产名待核验（zed-extension CLI / package-version-server 等） | 候选名逐一尝试 + release 页 HTML 解析降级；最终失败 → 告警跳过（降级 bundle）或构建失败（CLI，P2 强依赖）；CI windows job 实测首跑时修正 |
+| windows 资产名待核验（zed-extension CLI / package-version-server 等） | 候选名逐一尝试 + release 页 HTML 解析降级；最终失败 → 告警跳过（CLI 仅影响 P2 兜底路径的该扩展；package-version-server 降级 bundle）；CI windows job 实测首跑时修正 |
 | preset 误收装饰类扩展 | 预设内容工程维护（人工把关）；用户可 ln -s 自写增量覆盖或去链接；打包失败自动跳过不阻断 |
-| extensions 仓库 submodule 网络量大 | P2 只 `git submodule update --init --depth 1 extensions/<id>` 清单内扩展 |
+| extensions 仓库 submodule 网络量大 | 仅 P2 兜底路径（api 下载失败）触发，且只 `git submodule update --init --depth 1 extensions/<id>` 清单内扩展 |
 | CI 与本地行为不一致 | 单一入口命令 `zed-onprem-bundle build`；workflow 只做环境准备；产物断言（P6）在两端都执行 |

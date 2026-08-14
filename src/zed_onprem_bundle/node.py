@@ -98,8 +98,15 @@ def _self_check(paths: NodePaths, node_root: Path, is_windows: bool) -> bool:
     """
     if not paths.node_bin.is_file():
         return False
-    npm_cli = node_root / "node_modules" / "npm" / "bin" / "npm-cli.js"
-    if not npm_cli.is_file():
+    # npm 布局：官方 tar 包在 <root>/lib/node_modules/npm（node 24 实测），
+    # 源码/旧版可能在 <root>/node_modules/npm —— 两者都试。
+    npm_cli = None
+    for rel in ("lib/node_modules/npm/bin/npm-cli.js", "node_modules/npm/bin/npm-cli.js"):
+        cand = node_root / rel
+        if cand.is_file():
+            npm_cli = cand
+            break
+    if npm_cli is None:
         return False
     cmd = [
         str(paths.node_bin),

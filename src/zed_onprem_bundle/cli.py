@@ -102,7 +102,7 @@ def cmd_build(args: argparse.Namespace) -> int:
     extensions_repo = os.environ.get("EXTENSIONS_REPO", DEFAULT_EXTENSIONS_REPO)
 
     ok, tc = _run_stage(
-        "P1 工具链", "toolchain", "ensure_toolchain",
+        "P1 工具链", "toolchain", "ensure_zed_binary",
         cfg, platform, build_dir, dist_dir,
     )
     if not ok:
