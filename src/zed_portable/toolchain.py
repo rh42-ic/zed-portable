@@ -131,7 +131,7 @@ def _resolve_tag_commit(tag: str, headers: dict) -> str:
         )
         sha = tag_obj["object"]["sha"]
         obj_type = tag_obj["object"]["type"]
-    raise RuntimeError(f"无法将 tag {tag!r} 解析为 commit（最终 object.type={obj_type!r}）")
+    raise RuntimeError(f"cannot resolve tag {tag!r} to a commit (final object.type={obj_type!r})")
 
 
 def ensure_zed_binary(cfg, platform: str, build_dir: Path, dist_dir: Path) -> Toolchain:
@@ -154,7 +154,7 @@ def ensure_zed_binary(cfg, platform: str, build_dir: Path, dist_dir: Path) -> To
     zed_commit: str = ""
     if binary == "download":
         if _is_valid_zed(zed_bin):
-            print(f"zed 二进制已存在并通过校验：{zed_bin}（跳过下载）")
+            print(f"zed binary already present and verified: {zed_bin} (skipping download)")
             # 幂等跳过不重新解析 tag——但若 cfg release_tag 空，仍查一次用于返回
             release_tag = (cfg.get("zed") or {}).get("release_tag") or ""
             if not release_tag and not zed_tag:
@@ -194,7 +194,7 @@ def _ensure_wasi_sdk(build_dir: Path, is_windows: bool) -> Path:
     sdk_root = build_dir / "wasi-sdk"
     if sdk_root.is_dir():
         inner = _find_wasi_sdk_dir(sdk_root)
-        print(f"WASI SDK 已存在：{inner}（跳过下载）")
+        print(f"WASI SDK already present: {inner} (skipping download)")
         return inner
     plat = "windows-x64" if is_windows else "linux-x64"
     asset = WASI_SDK_ASSETS[plat]
@@ -213,7 +213,7 @@ def _find_wasi_sdk_dir(sdk_root: Path) -> Path:
     """glob 找含 wasi-sdk-25 的目录（内部目录名形如 wasi-sdk-25.0-x86_64-linux）。"""
     matches = [p for p in sdk_root.iterdir() if p.is_dir() and "wasi-sdk-25" in p.name]
     if not matches:
-        raise RuntimeError(f"{sdk_root} 下未找到 wasi-sdk-25* 目录（解压失败？）")
+        raise RuntimeError(f"wasi-sdk-25* directory not found under {sdk_root} (extraction failed?)")
     matches.sort(key=lambda p: len(p.name))
     return matches[0]
 
@@ -230,7 +230,7 @@ def ensure_zed_extension_cli(build_dir: Path, platform: str, zed_commit: str) ->
     is_windows = _is_windows(platform)
     cli_path = Path(build_dir) / f"zed-extension{'.exe' if is_windows else ''}"
     if cli_path.is_file() and os.access(cli_path, os.X_OK):
-        print(f"zed-extension CLI 已存在：{cli_path}（跳过下载）")
+        print(f"zed-extension CLI already present: {cli_path} (skipping download)")
         return cli_path
     _ensure_zed_extension_cli(cli_path, zed_commit, is_windows)
     return cli_path
@@ -252,12 +252,12 @@ def _ensure_zed_extension_cli(cli_path: Path, zed_commit: str, is_windows: bool)
         dl.download_file(url, cli_path)
     except dl.DownloadError as exc:
         raise RuntimeError(
-            f"zed-extension CLI 下载失败：{url}\n{exc}\n"
-            "CI 可用 cargo build -p extension_cli 兜底（本机禁 rust 编译）"
+            f"zed-extension CLI download failed: {url}\n{exc}\n"
+            "CI can fall back to cargo build -p extension_cli (rust compilation forbidden on this machine)"
         ) from exc
     if not is_windows:
         os.chmod(cli_path, 0o755)
-    print(f"zed-extension CLI 就绪：{cli_path}（cli_sha={cli_sha}）")
+    print(f"zed-extension CLI ready: {cli_path} (cli_sha={cli_sha})")
 
 
 def _extension_cli_sha(headers: dict) -> str:
@@ -346,11 +346,11 @@ def _run_zed_installer(installer: Path, install_dir: Path) -> None:
     try:
         proc = subprocess.run(args, capture_output=True, text=True, timeout=600)
     except subprocess.TimeoutExpired:
-        raise RuntimeError(f"Zed 安装器超时（600s）：{installer}")
+        raise RuntimeError(f"Zed installer timed out (600s): {installer}")
     if proc.returncode != 0:
         raise RuntimeError(
-            f"Zed 安装器退出码 {proc.returncode}（stdout={proc.stdout.strip()!r} "
-            f"stderr={proc.stderr.strip()!r}）：{installer}"
+            f"Zed installer exit code {proc.returncode} (stdout={proc.stdout.strip()!r} "
+            f"stderr={proc.stderr.strip()!r}): {installer}"
         )
 
 
@@ -371,7 +371,7 @@ def _collect_windows_install(install_dir: Path, dist_dir: Path) -> None:
     dist_dir.mkdir(parents=True, exist_ok=True)
     gui = install_dir / "Zed.exe"
     if not gui.is_file():
-        raise RuntimeError(f"安装目录缺少 GUI 编辑器 Zed.exe：{install_dir}")
+        raise RuntimeError(f"install directory missing GUI editor Zed.exe: {install_dir}")
     shutil.copy2(gui, dist_dir / "Zed.exe")
     _copy_windows_file(install_dir / "bin" / "zed.exe", dist_dir / "bin" / "zed.exe")
     _copy_windows_file(install_dir / "conpty.dll", dist_dir / "conpty.dll")
@@ -407,14 +407,14 @@ def _find_zed_binary(extract_dir: Path) -> Path:
     for p in sorted(extract_dir.rglob("zed"), key=lambda p: len(p.parts)):
         if p.is_file():
             return p
-    raise RuntimeError(f"解压目录 {extract_dir} 中未找到名为 zed 的可执行文件")
+    raise RuntimeError(f"no executable named zed found in extraction dir {extract_dir}")
 
 
 def _copy_local_zed(binary: str, zed_bin: Path, is_windows: bool) -> None:
     """cfg zed.binary 为本地路径：直接复制到 dist/bin/zed(.exe) 并校验。"""
     src = Path(binary)
     if not src.is_file():
-        raise RuntimeError(f"本地 zed 二进制不存在：{src}（cfg zed.binary={binary!r}）")
+        raise RuntimeError(f"local zed binary does not exist: {src} (cfg zed.binary={binary!r})")
     zed_bin.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(src, zed_bin)
     os.chmod(zed_bin, 0o755)
@@ -433,9 +433,9 @@ def _is_valid_zed(bin_path: Path) -> bool:
 def _verify_zed(bin_path: Path) -> None:
     """校验 zed 二进制：存在 + 可执行 + `--version` 退出码 0（timeout 30s）；失败 raise。"""
     if not bin_path.is_file():
-        raise RuntimeError(f"zed 二进制不存在：{bin_path}")
+        raise RuntimeError(f"zed binary does not exist: {bin_path}")
     if not os.access(bin_path, os.X_OK):
-        raise RuntimeError(f"zed 二进制不可执行：{bin_path}")
+        raise RuntimeError(f"zed binary is not executable: {bin_path}")
     try:
         proc = subprocess.run(
             [str(bin_path), "--version"],
@@ -444,11 +444,11 @@ def _verify_zed(bin_path: Path) -> None:
             timeout=30,
         )
     except subprocess.TimeoutExpired:
-        raise RuntimeError(f"zed --version 超时（30s）：{bin_path}")
+        raise RuntimeError(f"zed --version timed out (30s): {bin_path}")
     if proc.returncode != 0:
         raise RuntimeError(
-            f"zed --version 退出码 {proc.returncode}（stdout={proc.stdout.strip()!r} "
-            f"stderr={proc.stderr.strip()!r}）"
+            f"zed --version exit code {proc.returncode} (stdout={proc.stdout.strip()!r} "
+            f"stderr={proc.stderr.strip()!r})"
         )
     version_line = proc.stdout.strip() or proc.stderr.strip()
-    print(f"zed 校验通过：{version_line}")
+    print(f"zed verification passed: {version_line}")

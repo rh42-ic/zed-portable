@@ -105,7 +105,7 @@ class EnsureRemoteServersTests(unittest.TestCase):
         with mock.patch.object(remote_server_mod, "download_file", side_effect=_bad_download):
             with self.assertRaises(DownloadError) as ctx:
                 remote_server_mod.ensure_remote_servers(_make_cfg(), "v1.15.0", self.data_dir)
-        self.assertIn("魔数校验失败", str(ctx.exception))
+        self.assertIn("magic check failed", str(ctx.exception))
 
     def test_local_zed_tag_skips(self):
         """zed_tag == 'local'（本地二进制，版本未知）→ 返回 [] 且零下载。"""

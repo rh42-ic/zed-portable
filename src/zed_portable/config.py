@@ -74,7 +74,7 @@ def load_merged_config(config_dir: Path, env: Mapping | None = None) -> dict:
             if key == "_sources":
                 continue
             if key not in KNOWN_TOP_KEYS:
-                log.warning("配置 %s：未知顶层键 %r，忽略", path.name, key)
+                log.warning("config %s: unknown top-level key %r, ignored", path.name, key)
                 continue
             _record(sources, key, path.name)
             if isinstance(value, dict):
@@ -147,7 +147,7 @@ def _parse_toml(path: Path) -> dict:
         with open(path, "rb") as fh:
             return tomllib.load(fh)
     except (OSError, tomllib.TOMLDecodeError) as exc:
-        raise ValueError(f"无法解析配置文件 {path}: {exc}") from exc
+        raise ValueError(f"cannot parse config file {path}: {exc}") from exc
 
 
 def _validate(merged: dict) -> None:
@@ -156,28 +156,28 @@ def _validate(merged: dict) -> None:
     if ext is None:
         ext = merged["extensions"] = {}
     if not isinstance(ext, dict):
-        raise ValueError("extensions 必须为 table")
+        raise ValueError("extensions must be a table")
     ids = ext.get("ids", [])
     if not isinstance(ids, list) or not all(isinstance(i, str) for i in ids):
-        raise ValueError("extensions.ids 必须为字符串列表")
+        raise ValueError("extensions.ids must be a list of strings")
 
     # lsp.github / lsp.npm 值为 bool；非 bool 忽略 + 告警
     lsp = merged.get("lsp")
     if lsp is None:
         lsp = merged["lsp"] = {}
     if not isinstance(lsp, dict):
-        raise ValueError("lsp 必须为 table")
+        raise ValueError("lsp must be a table")
     for group in ("github", "npm"):
         table = lsp.get(group)
         if table is None:
             continue
         if not isinstance(table, dict):
-            log.warning("lsp.%s 非 table，忽略", group)
+            log.warning("lsp.%s is not a table, ignored", group)
             del lsp[group]
             continue
         for name, flag in list(table.items()):
             if not isinstance(flag, bool):
-                log.warning("lsp.%s.%s = %r 非 bool，忽略", group, name, flag)
+                log.warning("lsp.%s.%s = %r is not a bool, ignored", group, name, flag)
                 del table[name]
 
     # remote_server：仅当配置了该表（链接 remote.toml / 自写增量 / env 独立启用）才
@@ -187,16 +187,16 @@ def _validate(merged: dict) -> None:
     rs = merged.get("remote_server")
     if rs is not None:
         if not isinstance(rs, dict):
-            raise ValueError("remote_server 必须为 table")
+            raise ValueError("remote_server must be a table")
         platforms = rs.get("platforms", [])
         if not isinstance(platforms, list) or not all(isinstance(p, str) for p in platforms):
-            raise ValueError("remote_server.platforms 必须为字符串列表")
+            raise ValueError("remote_server.platforms must be a list of strings")
         for p in platforms:
             if p not in SUPPORTED_PLATFORMS:
-                raise ValueError(f"remote_server.platforms 含不支持的平台: {p}")
+                raise ValueError(f"remote_server.platforms contains unsupported platform: {p}")
         if rs.get("source", "github") != "github":
             raise ValueError(
-                f"remote_server.source 当前仅支持 github，收到: {rs.get('source')!r}"
+                f"remote_server.source currently only supports github, got: {rs.get('source')!r}"
             )
         # 显式启用（表存在）→ 补齐缺省（platforms 缺省 = 全 6 平台）
         rs.setdefault("source", "github")
@@ -236,8 +236,8 @@ _LIST_ENV_SUBKEYS = {"platforms"}
 
 
 def _log_sources(merged: dict, sources: dict[str, list[str]]) -> None:
-    log.info("配置来源摘要（顶层键 ← 文件）：")
+    log.info("config source summary (top-level key <- file):")
     for key in merged:
         if key == "_sources":
             continue
-        log.info("  %-12s ← %s", key, "、".join(sources.get(key, []) or ["（无）"]))
+        log.info("  %-12s <- %s", key, ",".join(sources.get(key, []) or ["(none)"]))

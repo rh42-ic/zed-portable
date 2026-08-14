@@ -74,7 +74,7 @@ def download_file(
                         if chunk:
                             fh.write(chunk)
             if expected_sha256 is not None and sha256_of(tmp) != expected_sha256:
-                raise DownloadError(f"sha256 校验失败（期望 {expected_sha256}）: {url}")
+                raise DownloadError(f"sha256 verification failed (expected {expected_sha256}): {url}")
             os.replace(tmp, dest)
             return dest
         except DownloadError:
@@ -87,7 +87,7 @@ def download_file(
         tmp.unlink(missing_ok=True)
     except OSError:
         pass
-    raise DownloadError(f"下载失败（{RETRIES} 次重试后）: {url}") from last_err
+    raise DownloadError(f"download failed (after {RETRIES} retries): {url}") from last_err
 
 
 def sha256_of(path: Path) -> str:
@@ -121,7 +121,7 @@ def extract_archive(archive: Path, dest_dir: Path) -> None:
         with gzip.open(archive, "rb") as fin, open(dest_dir / out_name, "wb") as fout:
             shutil.copyfileobj(fin, fout)
     else:
-        raise DownloadError(f"不支持的归档格式: {name}")
+        raise DownloadError(f"unsupported archive format: {name}")
 
 
 def github_asset_url(
@@ -155,7 +155,7 @@ def github_asset_url(
             if _asset_matches(cand, asset_name):
                 return f"https://github.com/{repo}/releases/download/{tag}/{asset_name}"
     raise AssetNotFoundError(
-        f"release 中未找到资产: {repo} @ {tag}（候选: {candidates}）"
+        f"asset not found in release: {repo} @ {tag} (candidates: {candidates})"
     )
 
 

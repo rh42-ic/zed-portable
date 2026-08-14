@@ -229,7 +229,7 @@ class AssertProductsTests(unittest.TestCase):
         with self.assertRaises(AssertionError) as ctx:
             _assert_products(self.cfg, "linux-x64", self._tmp, self.np, [], [], [])
         msg = str(ctx.exception)
-        for expected in ("node 运行时", "rust-analyzer", "yaml", "pyright", "foo-ext", "bar-ext"):
+        for expected in ("node runtime", "rust-analyzer", "yaml", "pyright", "foo-ext", "bar-ext"):
             self.assertIn(expected, msg)
 
     def test_all_present_passes(self):
@@ -274,7 +274,7 @@ class AssertProductsTests(unittest.TestCase):
         with self.assertRaises(AssertionError) as ctx:
             _assert_products(self.cfg, "linux-x64", self._tmp, self.np, [], [], [])
         msg = str(ctx.exception)
-        self.assertIn("node 运行时", msg)
+        self.assertIn("node runtime", msg)
         self.assertNotIn("rust-analyzer", msg)
         self.assertNotIn("yaml", msg)
 

@@ -80,7 +80,7 @@ def build_extensions(
     """
     ids = list((cfg.get("extensions") or {}).get("ids") or [])
     if not ids:
-        print("无扩展配置，跳过 P2")
+        print("no extensions configured, skipping P2")
         return []
     dl = _download()
     build_dir = Path(build_dir)
@@ -95,14 +95,14 @@ def build_extensions(
         try:
             data = dl.get_json(f"{ZED_EXTENSIONS_API}/{eid}")
         except Exception as exc:  # noqa: BLE001 —— 网络异常走本地打包兜底
-            print(f"  WARN: 官方 API 元数据获取失败（{type(exc).__name__}），走本地打包兜底：{eid}")
+            print(f"  WARN: official API metadata fetch failed ({type(exc).__name__}), falling back to local packaging: {eid}")
             skipped.extend(_fallback_package(eid, tc, repo, build_dir, installed_dir, platform))
             continue
         version = _latest_compatible_version(data.get("data") or [])
         if version is None:
             print(
-                f"  WARN: {eid} 无兼容版本（schema_version>{MAX_SCHEMA_VERSION} 或 "
-                f"wasm_api_version>{MAX_WASM_API_VERSION}），跳过（不走兜底）"
+                f"  WARN: {eid} has no compatible version (schema_version>{MAX_SCHEMA_VERSION} or "
+                f"wasm_api_version>{MAX_WASM_API_VERSION}), skipping (no fallback)"
             )
             skipped.append(eid)
             continue
@@ -111,17 +111,17 @@ def build_extensions(
         toml_present, installed_version = _installed_version(installed_dir)
         if toml_present:
             if installed_version == version:
-                print(f"  已是最新版 v{version}，跳过")
+                print(f"  already at latest version v{version}, skipping")
                 continue
             if installed_version is None:
-                print(f"  extension.toml 解析失败/无 version，保守视为已装，跳过：{eid}")
+                print(f"  extension.toml parse failed/missing version, conservatively treated as installed, skipping: {eid}")
                 continue
 
         # 3+4) 下载 + 落位（下载失败 → 兜底；校验失败 → 跳过不走兜底）
         try:
             ok = _install_from_api(eid, version, dl, build_dir, installed_dir)
         except dl.DownloadError as exc:
-            print(f"  WARN: 官方产物下载失败（{exc}），走本地打包兜底：{eid}")
+            print(f"  WARN: official artifact download failed ({exc}), falling back to local packaging: {eid}")
             skipped.extend(_fallback_package(eid, tc, repo, build_dir, installed_dir, platform))
             continue
         if not ok:
@@ -204,12 +204,12 @@ def _install_from_api(
     if not is_valid_extension_artifact(tmp):
         if installed_dir.exists():
             shutil.rmtree(installed_dir, ignore_errors=True)  # 防坏扩展
-        print(f"  WARN: 官方产物缺 extension.toml / 有效内容（*.wasm / themes/ / icons/ / snippets/）：{eid}（上游异常，跳过）")
+        print(f"  WARN: official artifact missing extension.toml / valid content (*.wasm / themes/ / icons/ / snippets/): {eid} (upstream issue, skipping)")
         return False
     if installed_dir.exists():
         shutil.rmtree(installed_dir)
     shutil.copytree(tmp, installed_dir)
-    print(f"  已安装 v{version}：{installed_dir}")
+    print(f"  installed v{version}: {installed_dir}")
     return True
 
 
@@ -256,7 +256,7 @@ def _fallback_package(
 ) -> List[str]:
     """submodule 拉取 → 本地打包 → 落位；返回跳过 id 清单（0 或 1 项）。"""
     if not repo.is_dir():
-        print(f"  WARN: extensions 仓库不存在：{repo}（兜底不可用，跳过 {eid}）")
+        print(f"  WARN: extensions repo does not exist: {repo} (fallback unavailable, skipping {eid})")
         return [eid]
     if not _init_submodule(eid, repo):
         return [eid]
@@ -281,14 +281,14 @@ def _init_submodule(eid: str, repo: Path) -> bool:
             timeout=300,
         )
     except subprocess.TimeoutExpired:
-        print(f"  WARN: submodule init 超时（300s）：{eid}")
+        print(f"  WARN: submodule init timed out (300s): {eid}")
         return False
     except OSError as exc:
-        print(f"  WARN: 无法执行 git submodule：{exc}")
+        print(f"  WARN: cannot run git submodule: {exc}")
         return False
     if proc.returncode != 0:
         detail = (proc.stderr or proc.stdout).strip()
-        print(f"  WARN: submodule init 失败：{eid}（{detail[-400:]}）")
+        print(f"  WARN: submodule init failed: {eid} ({detail[-400:]})")
         return False
     return True
 
@@ -309,7 +309,7 @@ def _package_extension(
         try:
             tc.wasi_sdk_path = toolchain.ensure_wasi_sdk(build_dir, platform)
         except Exception as exc:  # noqa: BLE001 —— 惰性获取失败 → 跳过该扩展，不 raise
-            print(f"  WARN: WASI SDK 惰性获取失败（{type(exc).__name__}: {exc}），跳过 {eid}")
+            print(f"  WARN: WASI SDK lazy fetch failed ({type(exc).__name__}: {exc}), skipping {eid}")
             return False
     if tc.zed_extension is None or not (
         tc.zed_extension.is_file() and os.access(tc.zed_extension, os.X_OK)
@@ -320,7 +320,7 @@ def _package_extension(
             )
         except Exception as exc:  # noqa: BLE001
             print(
-                f"  WARN: zed-extension CLI 惰性获取失败（{type(exc).__name__}: {exc}），跳过 {eid}"
+                f"  WARN: zed-extension CLI lazy fetch failed ({type(exc).__name__}: {exc}), skipping {eid}"
             )
             return False
     scratch.mkdir(parents=True, exist_ok=True)
@@ -335,14 +335,14 @@ def _package_extension(
     try:
         proc = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=600)
     except subprocess.TimeoutExpired:
-        print(f"  WARN: 打包超时（600s）：{eid}")
+        print(f"  WARN: packaging timed out (600s): {eid}")
         return False
     except OSError as exc:
-        print(f"  WARN: zed-extension 无法执行（{tc.zed_extension}）：{exc}")
+        print(f"  WARN: zed-extension cannot execute ({tc.zed_extension}): {exc}")
         return False
     if proc.returncode != 0:
         detail = (proc.stderr or proc.stdout).strip()
-        print(f"  WARN: 打包失败：{eid}（exit={proc.returncode}）：{detail[-400:]}")
+        print(f"  WARN: packaging failed: {eid} (exit={proc.returncode}): {detail[-400:]}")
         return False
     return True
 
@@ -350,7 +350,7 @@ def _package_extension(
 def _place_extension(eid: str, out_dir: Path, installed_dir: Path) -> bool:
     """输出目录内容复制到 dist/data/extensions/installed/{id}/，删 manifest.json，校验产物。"""
     if not out_dir.is_dir():
-        print(f"  WARN: 打包输出目录缺失：{out_dir}")
+        print(f"  WARN: packaging output directory missing: {out_dir}")
         return False
     if installed_dir.exists():
         shutil.rmtree(installed_dir)
@@ -362,9 +362,9 @@ def _place_extension(eid: str, out_dir: Path, installed_dir: Path) -> bool:
     if not _already_installed(installed_dir):
         # 缺 extension.wasm / extension.toml → 告警跳过，并清理半成品避免运行时加载坏扩展
         shutil.rmtree(installed_dir, ignore_errors=True)
-        print(f"  WARN: 落位后缺少 extension.wasm / extension.toml：{eid}")
+        print(f"  WARN: missing extension.wasm / extension.toml after placement: {eid}")
         return False
-    print(f"  已落位：{installed_dir}")
+    print(f"  placed: {installed_dir}")
     return True
 
 

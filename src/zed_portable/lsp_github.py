@@ -183,7 +183,7 @@ def _install_release_server(name: str, plat: str, exe: str, dist_dir: Path) -> N
         metadata = langs / name / f"{name}-{tag}.metadata"
 
     if _cache_hit(target, metadata, digest, spec["version_check"]):
-        print(f"  {name} 缓存命中，跳过：{target}")
+        print(f"  {name} cache hit, skipping: {target}")
         return
 
     tmp = _tmp_dir(dist_dir, name)
@@ -192,7 +192,7 @@ def _install_release_server(name: str, plat: str, exe: str, dist_dir: Path) -> N
         if kind == "gz-single":
             src = tmp / asset_name[: -len(".gz")]  # 裸 gz → 解压为去 .gz 同名文件
             if not src.is_file():
-                raise dl.DownloadError(f"解压后未找到二进制：{src}")
+                raise dl.DownloadError(f"binary not found after extraction: {src}")
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(src, target)
             os.chmod(target, 0o755)
@@ -202,7 +202,7 @@ def _install_release_server(name: str, plat: str, exe: str, dist_dir: Path) -> N
                 key=lambda p: len(p.parts),
             )
             if not files:
-                raise dl.DownloadError("解压后未找到任何文件")
+                raise dl.DownloadError("no files found after extraction")
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(files[0], target)
             os.chmod(target, 0o755)
@@ -210,13 +210,13 @@ def _install_release_server(name: str, plat: str, exe: str, dist_dir: Path) -> N
             # zip 内顶层单目录 → 整体移平为 <name>_<tag>/（bin/ lib/ 一并落位）
             tops = [p for p in tmp.iterdir() if p.is_dir()]
             if len(tops) != 1:
-                raise dl.DownloadError(f"zip 顶层目录数 != 1: {[p.name for p in tops]}")
+                raise dl.DownloadError(f"zip top-level directory count != 1: {[p.name for p in tops]}")
             dest = target.parent.parent
             if dest.exists():
                 shutil.rmtree(dest)
             shutil.move(str(tops[0]), str(dest))
             if not target.is_file():
-                raise dl.DownloadError(f"移平后目标缺失：{target}")
+                raise dl.DownloadError(f"target missing after flattening: {target}")
             os.chmod(target, 0o755)
         else:  # nested-bin
             matches = sorted(
@@ -224,16 +224,16 @@ def _install_release_server(name: str, plat: str, exe: str, dist_dir: Path) -> N
                 key=lambda p: len(p.parts),
             )
             if not matches:
-                raise dl.DownloadError(f"解压后未找到 {name}{exe}")
+                raise dl.DownloadError(f"not found after extraction: {name}{exe}")
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(matches[0], target)
             os.chmod(target, 0o755)
 
         if spec["version_check"] and not _version_ok(target):
-            raise RuntimeError(f"{name} --version 自检失败：{target}")
+            raise RuntimeError(f"{name} --version self-check failed: {target}")
         if metadata is not None:
             _write_metadata(metadata, digest)
-        print(f"  {name} 已安装：{target}（tag={tag}）")
+        print(f"  {name} installed: {target} (tag={tag})")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -250,11 +250,11 @@ def _install_gopls(plat: str, exe: str, dist_dir: Path) -> bool:
     langs = dist_dir / "data" / "languages"
     gopls_dir = langs / "gopls"
     if gopls_dir.is_dir() and any(p.name.startswith("gopls_") for p in gopls_dir.iterdir()):
-        print("  gopls 缓存命中，跳过")
+        print("  gopls cache hit, skipping")
         return True
     go = shutil.which("go")
     if not go:
-        print("  WARN: 未找到 go 命令，gopls 跳过（需系统 Go 工具链）")
+        print("  WARN: go command not found, gopls skipped (requires system Go toolchain)")
         return False
     gopls_dir.mkdir(parents=True, exist_ok=True)
     env = dict(os.environ)
@@ -268,17 +268,17 @@ def _install_gopls(plat: str, exe: str, dist_dir: Path) -> bool:
             timeout=900,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
-        print(f"  WARN: go install 执行失败：{exc}")
+        print(f"  WARN: go install failed to execute: {exc}")
         return False
     if proc.returncode != 0:
         print(
-            f"  WARN: go install 失败（exit={proc.returncode}）："
+            f"  WARN: go install failed (exit={proc.returncode}): "
             f"{(proc.stderr or proc.stdout).strip()[-400:]}"
         )
         return False
     raw = gopls_dir / f"gopls{exe}"
     if not raw.is_file():
-        print(f"  WARN: go install 产物缺失：{raw}")
+        print(f"  WARN: go install artifact missing: {raw}")
         return False
     ver = _gopls_version(raw)
     go_ver = _go_version(go)
@@ -286,7 +286,7 @@ def _install_gopls(plat: str, exe: str, dist_dir: Path) -> bool:
     shutil.copy2(raw, dest)
     os.chmod(dest, 0o755)
     raw.unlink(missing_ok=True)  # 不带 gopls_ 前缀的裸产物不参与缓存判定，删除以免冗余
-    print(f"  gopls 已安装：{dest}")
+    print(f"  gopls installed: {dest}")
     return True
 
 
@@ -332,7 +332,7 @@ def install_github_lsps(cfg, platform: str, dist_dir: Path) -> list[str]:
         n for n, flag in sorted(((cfg.get("lsp") or {}).get("github") or {}).items()) if flag
     ]
     if not enabled:
-        print("无启用的 github 型 LSP，跳过 P4")
+        print("no enabled github-type LSPs, skipping P4")
         return []
 
     failed: list[str] = []
@@ -345,14 +345,14 @@ def install_github_lsps(cfg, platform: str, dist_dir: Path) -> list[str]:
             elif name in GITHUB_SERVERS:
                 _install_release_server(name, plat, exe, dist_dir)
             else:
-                print(f"  WARN: 未知 github LSP: {name}（跳过）")
+                print(f"  WARN: unknown github LSP: {name} (skipped)")
                 failed.append(name)
         except Exception as exc:  # noqa: BLE001 —— 单 LSP 失败不阻断整体
-            print(f"  WARN: {name} 安装失败：{type(exc).__name__}: {exc}")
+            print(f"  WARN: {name} install failed: {type(exc).__name__}: {exc}")
             failed.append(name)
 
     if failed:
-        print(f"P4 完成，失败/跳过：{failed}")
+        print(f"P4 done, failed/skipped: {failed}")
     return failed
 
 

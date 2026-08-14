@@ -51,7 +51,7 @@ def _write_settings(cfg, dist_dir: Path) -> None:
     dest = dist_dir / "data" / "config" / "settings.json"
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_text(json.dumps(settings, indent=2) + "\n")
-    print(f"settings.json 已写入：{dest}")
+    print(f"settings.json written: {dest}")
 
 
 def _write_run_sh(dist_dir: Path) -> None:
@@ -65,7 +65,7 @@ def _write_run_sh(dist_dir: Path) -> None:
     dest = dist_dir / "run.sh"
     dest.write_text(content)
     dest.chmod(0o755)
-    print(f"run.sh 已生成：{dest}")
+    print(f"run.sh generated: {dest}")
 
 
 def _write_run_ps1(dist_dir: Path) -> None:
@@ -77,7 +77,7 @@ def _write_run_ps1(dist_dir: Path) -> None:
     )
     dest = dist_dir / "run.ps1"
     dest.write_text(content)
-    print(f"run.ps1 已生成：{dest}")
+    print(f"run.ps1 generated: {dest}")
 
 
 def _assert_products(
@@ -101,7 +101,7 @@ def _assert_products(
         if not path.exists():
             missing.append(f"{label}: {path}")
 
-    check(np.node_bin, "node 运行时")
+    check(np.node_bin, "node runtime")
 
     failed_gh_set = set(failed_gh or [])
     for name, flag in sorted(((cfg.get("lsp") or {}).get("github") or {}).items()):
@@ -125,11 +125,11 @@ def _assert_products(
             continue
         installed_dir = dist_dir / "data" / "extensions" / "installed" / eid
         if not is_valid_extension_artifact(installed_dir):
-            missing.append(f"扩展 {eid}: 产物缺失（extension.toml + 有效内容：*.wasm / themes/ / icons/ / snippets/）：{installed_dir}")
+            missing.append(f"extension {eid}: artifact missing (extension.toml + valid content: *.wasm / themes/ / icons/ / snippets/): {installed_dir}")
 
     if missing:
-        raise AssertionError("产物断言失败，缺失：\n  " + "\n  ".join(missing))
-    print("产物断言通过：node / github LSP / npm LSP / 扩展 全部在位")
+        raise AssertionError("product assertion failed, missing:\n  " + "\n  ".join(missing))
+    print("product assertion passed: node / github LSP / npm LSP / extensions all present")
 
 
 def _extensions_commit(cfg, env: Mapping[str, str]) -> str:
@@ -199,7 +199,7 @@ def _write_build_info(
     dest.write_text(
         _build_info_text(cfg, tc, platform, config_files, failed_gh, failed_npm, skipped_exts)
     )
-    print(f"BUILD_INFO 已写入：{dest}")
+    print(f"BUILD_INFO written: {dest}")
 
 
 def _du_mb(path: Path) -> float:
@@ -224,10 +224,10 @@ def _report_sizes(dist_dir: Path) -> None:
         ("languages", data / "languages"),
         ("extensions", data / "extensions"),
     ]
-    print("bundle 体积报告（MB）：")
+    print("bundle size report (MB):")
     for label, path in rows:
         print(f"  {label:<12s} {_du_mb(path):>9.1f}")
-    print(f"  {'bundle 总计':<12s} {_du_mb(dist_dir):>9.1f}")
+    print(f"  {'bundle total':<12s} {_du_mb(dist_dir):>9.1f}")
 
 
 def finalize(
@@ -256,7 +256,7 @@ def finalize(
         _write_run_ps1(dist_dir)
         (dist_dir / "run.sh").unlink(missing_ok=True)
     else:
-        raise ValueError(f"未知平台：{platform}")
+        raise ValueError(f"unknown platform: {platform}")
     # 3) 产物断言（缺失 → AssertionError，与 P4/P5 告警语义区分）
     _assert_products(cfg, platform, dist_dir, np, failed_gh, failed_npm, skipped_exts)
     # 4) BUILD_INFO

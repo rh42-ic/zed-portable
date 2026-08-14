@@ -27,31 +27,31 @@ DEFAULT_EXTENSIONS_REPO = "/home/dev/rust-dev/extensions"
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="zed-portable",
-        description="自包含离线 Zed 分发包构建器",
+        description="Self-contained offline Zed distribution bundle builder",
     )
-    parser.add_argument("--version", action="store_true", help="显示版本号并退出")
-    sub = parser.add_subparsers(dest="command", metavar="<command>", help="子命令")
-    build = sub.add_parser("build", help="执行完整构建流水线（P1-P6）")
+    parser.add_argument("--version", action="store_true", help="Show version and exit")
+    sub = parser.add_subparsers(dest="command", metavar="<command>", help="subcommands")
+    build = sub.add_parser("build", help="Run the full build pipeline (P1-P6)")
     build.add_argument(
         "--config-dir",
         default=str(PROJECT_ROOT / "config"),
-        help="配置文件目录（默认 %(default)s）",
+        help="Config file directory (default %(default)s)",
     )
     build.add_argument(
         "--build-dir",
         default=str(PROJECT_ROOT / "build"),
-        help="中间产物目录（默认 %(default)s）",
+        help="Intermediate artifact directory (default %(default)s)",
     )
     build.add_argument(
         "--dist-dir",
         default=str(PROJECT_ROOT / "dist"),
-        help="bundle 输出目录（默认 %(default)s）",
+        help="Bundle output directory (default %(default)s)",
     )
     build.add_argument(
         "--platform",
         choices=("linux-x64", "windows-x64"),
         default=None,
-        help="目标平台（env ZED_BUNDLE_PLATFORM 覆盖；缺省取本机平台）",
+        help="Target platform (overridden by env ZED_BUNDLE_PLATFORM; defaults to local platform)",
     )
     return parser
 
@@ -62,7 +62,7 @@ def resolve_platform(arg: str | None) -> str:
         "windows-x64" if sys.platform == "win32" else "linux-x64"
     )
     if value not in ("linux-x64", "windows-x64"):
-        raise SystemExit(f"无效平台: {value}（应为 linux-x64 或 windows-x64）")
+        raise SystemExit(f"invalid platform: {value} (expected linux-x64 or windows-x64)")
     return value
 
 
@@ -76,7 +76,7 @@ def _run_stage(label: str, module: str, func: str, *args) -> tuple[bool, object]
         mod = importlib.import_module(f"zed_portable.{module}")
         return True, getattr(mod, func)(*args)
     except Exception as exc:  # noqa: BLE001 —— 阶段失败统一拦截
-        log.error("阶段失败: %s —— %s: %s", label, type(exc).__name__, exc)
+        log.error("stage failed: %s -- %s: %s", label, type(exc).__name__, exc)
         return False, None
 
 
@@ -85,14 +85,14 @@ def cmd_build(args: argparse.Namespace) -> int:
     build_dir = Path(args.build_dir)
     dist_dir = Path(args.dist_dir)
     platform = resolve_platform(args.platform)
-    log.info("项目根: %s", PROJECT_ROOT)
-    log.info("平台: %s", platform)
+    log.info("project root: %s", PROJECT_ROOT)
+    log.info("platform: %s", platform)
 
     # P0 配置合并先行（§4 规则）
     try:
         cfg = load_merged_config(config_dir)
     except Exception as exc:  # noqa: BLE001
-        log.error("阶段失败: P0 配置合并 —— %s: %s", type(exc).__name__, exc)
+        log.error("stage failed: P0 config merge -- %s: %s", type(exc).__name__, exc)
         return 1
 
     enabled_dir = config_dir / "enabled"
@@ -102,19 +102,19 @@ def cmd_build(args: argparse.Namespace) -> int:
     extensions_repo = os.environ.get("EXTENSIONS_REPO", DEFAULT_EXTENSIONS_REPO)
 
     ok, tc = _run_stage(
-        "P1 工具链", "toolchain", "ensure_zed_binary",
+        "P1 toolchain", "toolchain", "ensure_zed_binary",
         cfg, platform, build_dir, dist_dir,
     )
     if not ok:
         return 1
     ok, skipped = _run_stage(
-        "P2 扩展", "extensions", "build_extensions",
+        "P2 extensions", "extensions", "build_extensions",
         cfg, tc, platform, build_dir, dist_dir, extensions_repo,
     )
     if not ok:
         return 1
     ok, _ = _run_stage(
-        "P2.5 远程服务端", "remote_server", "ensure_remote_servers",
+        "P2.5 remote server", "remote_server", "ensure_remote_servers",
         cfg, tc.zed_tag, dist_dir / "data",
     )
     if not ok:
@@ -137,13 +137,13 @@ def cmd_build(args: argparse.Namespace) -> int:
     if not ok:
         return 1
     ok, _ = _run_stage(
-        "P6 收尾", "finalize", "finalize",
+        "P6 finalize", "finalize", "finalize",
         cfg, platform, dist_dir, tc, np, failed_gh, failed_npm, skipped, config_files,
     )
     if not ok:
         return 1
 
-    print(f"bundle 完成: {dist_dir}")
+    print(f"bundle complete: {dist_dir}")
     return 0
 
 

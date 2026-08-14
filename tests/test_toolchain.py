@@ -299,7 +299,7 @@ class EnsureZedExtensionCliTests(unittest.TestCase):
             with self.assertRaises(RuntimeError) as ctx:
                 toolchain_mod.ensure_zed_extension_cli(self.build, "linux-x64", "deadbeef")
         self.assertIn("cargo build -p extension_cli", str(ctx.exception))
-        self.assertIn("本机禁 rust 编译", str(ctx.exception))
+        self.assertIn("rust compilation forbidden", str(ctx.exception))
 
 
 if __name__ == "__main__":

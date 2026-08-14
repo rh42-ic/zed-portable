@@ -119,7 +119,7 @@ def _install_eslint(np, dist_dir: Path, is_windows: bool) -> None:
     repo_root = versioned / "vscode-eslint"
     server_path = repo_root / "server" / "out" / "eslintServer.js"
     if server_path.is_file():
-        print(f"  eslint 缓存命中，跳过：{server_path}")
+        print(f"  eslint cache hit, skipping: {server_path}")
         return
 
     archive = dist_dir.parent / "build" / "lsp-archives" / f"vscode-eslint-{ESLINT_VERSION}.tar.gz"
@@ -130,7 +130,7 @@ def _install_eslint(np, dist_dir: Path, is_windows: bool) -> None:
     dl.extract_archive(archive, tmp)
     tops = [p for p in tmp.iterdir() if p.is_dir()]
     if len(tops) != 1:
-        raise RuntimeError(f"eslint 归档顶层目录数 != 1: {[p.name for p in tops]}")
+        raise RuntimeError(f"eslint archive top-level directory count != 1: {[p.name for p in tops]}")
     # 唯一解压目录 rename 为 vscode-eslint（§5 P5）
     if repo_root.exists():
         shutil.rmtree(repo_root)
@@ -140,11 +140,11 @@ def _install_eslint(np, dist_dir: Path, is_windows: bool) -> None:
     for step_args, step_label in ((["install"], "npm install"), (["run", "compile"], "npm run compile")):
         proc = _run_npm(np, step_args, timeout=900, cwd=repo_root, is_windows=is_windows)
         if proc is None or proc.returncode != 0:
-            detail = (proc.stderr or proc.stdout).strip()[-400:] if proc else "subprocess 启动失败"
-            raise RuntimeError(f"eslint {step_label} 失败（exit={getattr(proc, 'returncode', '?')}）：{detail}")
+            detail = (proc.stderr or proc.stdout).strip()[-400:] if proc else "subprocess failed to start"
+            raise RuntimeError(f"eslint {step_label} failed (exit={getattr(proc, 'returncode', '?')}): {detail}")
     if not server_path.is_file():
-        raise RuntimeError(f"eslint 编译后 server_path 缺失：{server_path}")
-    print(f"  eslint 已安装：{server_path}")
+        raise RuntimeError(f"server_path missing after eslint compile: {server_path}")
+    print(f"  eslint installed: {server_path}")
 
 
 def install_npm_lsps(cfg, np, platform: str, dist_dir: Path) -> list[str]:
@@ -158,7 +158,7 @@ def install_npm_lsps(cfg, np, platform: str, dist_dir: Path) -> list[str]:
         n for n, flag in sorted(((cfg.get("lsp") or {}).get("npm") or {}).items()) if flag
     ]
     if not enabled:
-        print("无启用的 npm 型 LSP，跳过 P5")
+        print("no enabled npm-type LSPs, skipping P5")
         return []
 
     failed: list[str] = []
@@ -169,14 +169,14 @@ def install_npm_lsps(cfg, np, platform: str, dist_dir: Path) -> list[str]:
                 _install_eslint(np, dist_dir, is_windows)
                 continue
             if name not in NPM_SERVERS:
-                print(f"  WARN: 未知 npm LSP: {name}（跳过）")
+                print(f"  WARN: unknown npm LSP: {name} (skipped)")
                 failed.append(name)
                 continue
             install_dir_name, rel_path, pkgs = NPM_SERVERS[name]
             install_dir = dist_dir / "data" / "languages" / install_dir_name
             server_path = install_dir / rel_path
             if server_path.is_file():
-                print(f"  {name} 缓存命中，跳过：{server_path}")
+                print(f"  {name} cache hit, skipping: {server_path}")
                 continue
             proc = _run_npm(
                 np,
@@ -185,24 +185,24 @@ def install_npm_lsps(cfg, np, platform: str, dist_dir: Path) -> list[str]:
                 is_windows=is_windows,
             )
             if proc is None or proc.returncode != 0:
-                detail = (proc.stderr or proc.stdout).strip()[-400:] if proc else "subprocess 启动失败"
+                detail = (proc.stderr or proc.stdout).strip()[-400:] if proc else "subprocess failed to start"
                 print(
-                    f"  WARN: {name} npm install 失败"
-                    f"（exit={getattr(proc, 'returncode', '?')}）：{detail}"
+                    f"  WARN: {name} npm install failed"
+                    f" (exit={getattr(proc, 'returncode', '?')}): {detail}"
                 )
                 failed.append(name)
                 continue
             if not server_path.is_file():
-                print(f"  WARN: {name} 安装后 server_path 缺失：{server_path}")
+                print(f"  WARN: {name} server_path missing after install: {server_path}")
                 failed.append(name)
                 continue
-            print(f"  {name} 已安装：{server_path}")
+            print(f"  {name} installed: {server_path}")
         except Exception as exc:  # noqa: BLE001 —— 单 server 失败不阻断整体
-            print(f"  WARN: {name} 安装失败：{type(exc).__name__}: {exc}")
+            print(f"  WARN: {name} install failed: {type(exc).__name__}: {exc}")
             failed.append(name)
 
     if failed:
-        print(f"P5 完成，失败/跳过：{failed}")
+        print(f"P5 done, failed/skipped: {failed}")
     return failed
 
 

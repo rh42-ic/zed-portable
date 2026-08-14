@@ -37,10 +37,10 @@ def ensure_remote_servers(cfg: dict, zed_tag: str, data_dir: Path) -> list[str]:
     返回本次确认的平台列表。
     """
     if not cfg.get("remote_server") or not cfg.get("remote_server", {}).get("platforms"):
-        log.info("未配置 remote_server（链接 config/available/remote.toml 启用），跳过")
+        log.info("remote_server not configured (link config/available/remote.toml to enable), skipping")
         return []
     if zed_tag == "local":
-        log.warning("zed.binary 为本地路径，remote server 版本未知，跳过预置")
+        log.warning("zed.binary is a local path, remote server version unknown, skipping pre-seeding")
         return []
     channel = (cfg.get("zed") or {}).get("channel", "stable")
     version = zed_tag.removeprefix("v")
@@ -49,7 +49,7 @@ def ensure_remote_servers(cfg: dict, zed_tag: str, data_dir: Path) -> list[str]:
         os_name, arch = platform.split("-", 1)
         dest = data_dir / "remote_servers" / channel / platform / f"{version}.gz"
         if dest.exists() and _magic_ok(dest, os_name):
-            log.info("remote server 已存在，跳过: %s", dest)
+            log.info("remote server already present, skipping: %s", dest)
             confirmed.append(platform)
             continue
         suffix = "zip" if os_name == "windows" else "gz"
@@ -59,8 +59,8 @@ def ensure_remote_servers(cfg: dict, zed_tag: str, data_dir: Path) -> list[str]:
         )
         download_file(url, dest)  # 内部自动 mkdir 父目录、重试 3 次、原子 rename
         if not _magic_ok(dest, os_name):
-            raise DownloadError(f"remote server 资产魔数校验失败: {dest}")
-        log.info("remote server 落位: %s ← %s", dest, url)
+            raise DownloadError(f"remote server asset magic check failed: {dest}")
+        log.info("remote server placed: %s <- %s", dest, url)
         confirmed.append(platform)
     return confirmed
 

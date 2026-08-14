@@ -120,7 +120,7 @@ class ConfigMergeTest(unittest.TestCase):
         with self.assertLogs(LOGGER, level="WARNING") as cm:
             cfg = load_merged_config(cfg_dir)
         self.assertEqual(cfg["lsp"]["github"], {"typst": True})
-        self.assertTrue(any("非 bool" in msg for msg in cm.output))
+        self.assertTrue(any("not a bool" in msg for msg in cm.output))
 
     def test_unknown_top_key_ignored_with_warning(self):
         """未知顶层键 → 忽略 + 告警，不崩溃、不进入结果。"""
@@ -131,7 +131,7 @@ class ConfigMergeTest(unittest.TestCase):
             cfg = load_merged_config(cfg_dir)
         self.assertNotIn("unknown_top", cfg)
         self.assertEqual(cfg["zed"]["channel"], "dev")
-        self.assertTrue(any("未知顶层键" in msg for msg in cm.output))
+        self.assertTrue(any("unknown top-level key" in msg for msg in cm.output))
 
     def test_sources_recorded(self):
         """_sources 存在且记录各顶层键来源文件（含 defaults 标记）。"""

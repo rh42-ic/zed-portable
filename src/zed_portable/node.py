@@ -52,7 +52,7 @@ def ensure_node(cfg, platform: str, dist_dir: Path) -> NodePaths:
 
     if _self_check(paths, node_root, is_windows):
         _ensure_runtime_files(node_root)
-        print(f"node 已存在并通过自检：{paths.node_bin}（跳过下载）")
+        print(f"node already present and passed self-check: {paths.node_bin} (skipping download)")
         return paths
 
     # 下载 → 解压 → 自检；失败则删除目录重下一次（版本必须精确）
@@ -67,10 +67,10 @@ def ensure_node(cfg, platform: str, dist_dir: Path) -> NodePaths:
         _extract_node(archive, node_parent)
         _ensure_runtime_files(node_root)
         if _self_check(paths, node_root, is_windows):
-            print(f"node 自检通过：{paths.node_bin}")
+            print(f"node self-check passed: {paths.node_bin}")
             return paths
-        print(f"WARN: node 自检失败，删除重下（第 {attempt}/2 次）")
-    raise RuntimeError(f"node 下载/自检失败（{version}，{suffix}），请检查网络或版本")
+        print(f"WARN: node self-check failed, deleting and re-downloading (attempt {attempt}/2)")
+    raise RuntimeError(f"node download/self-check failed ({version}, {suffix}), check network or version")
 
 
 def _download_node(version: str, suffix: str, archive: Path) -> None:
